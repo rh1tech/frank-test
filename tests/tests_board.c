@@ -138,139 +138,107 @@ static ui_test_state_t t_onewire(const detect_result_t *d, char *detail,
  * than reported — the link buses on core2 deliberately run adjacent
  * pins to the same places, and flagging those every run would train the
  * operator to ignore the result. */
-/* Pins that are deliberately tied to each other, and so are not defects.
- *
- * On megafrank GP9/10/11 carry I2S, the TurboSound shift register *and*
- * the PWM audio path, and the analogue network between them (R43-R46 and
- * the RC filters) connects them to one another by design. The scan
- * reported GP9-GP10 as a short on the first board that had this circuit,
- * which is true and useless. */
-static bool audio_pin(const frank_pins_t *p, unsigned pin) {
-    if (p->i2s_data     != PIN_NC && pin == (unsigned)p->i2s_data)     return true;
-    if (p->i2s_clk_base != PIN_NC &&
-        (pin == (unsigned)p->i2s_clk_base ||
-         pin == (unsigned)p->i2s_clk_base + 1)) return true;
-    if (p->i2s_mclk != PIN_NC && pin == (unsigned)p->i2s_mclk) return true;
 
-    if (p->ay_rclk  != PIN_NC && pin == (unsigned)p->ay_rclk)  return true;
-    if (p->ay_srclk != PIN_NC && pin == (unsigned)p->ay_srclk) return true;
-    if (p->ay_ser   != PIN_NC && pin == (unsigned)p->ay_ser)   return true;
-    return false;
+/* Which pins does the descriptor already claim?
+ *
+ * The scan has produced four false positives on four boards, and every
+ * one was a pin with something other than the MCU on its net: the ESP
+ * UART, where the module drives its own TX; the gamepad data lines,
+ * behind a clamp diode and a connector; the SD socket, whose pins float
+ * with no card in it; and GP23, which on a Pico module is the SMPS
+ * control and reaches no header at all.
+ *
+ * Each was patched individually until it became clear they are one
+ * problem. An adjacent-pin test drives one pad and asks whether the
+ * neighbour follows, and it can only answer that for a pad which is
+ * nothing but a pad. The moment a net has a connector, a pull, a diode
+ * or another driver on it, the reading describes the circuit rather than
+ * the assembly.
+ *
+ * So the rule is now the inverse of a skip list: a pin is scanned only
+ * if the board descriptor gives it no function. That is a much smaller
+ * set on a populated board, and the row says how much smaller, because a
+ * "no shorts" that quietly tested nine pins is worth less than one that
+ * tested forty and the operator should be able to tell which they got.
+ */
+typedef uint64_t pinmask_t;
+
+static void claim(pinmask_t *m, int pin) {
+    if (pin != PIN_NC && pin >= 0 && pin < 64) *m |= (pinmask_t)1u << pin;
 }
 
-/* Is this GPIO actually on the board, or inside the module?
- *
- * Four boards socket a Pico-form-factor module rather than carrying the
- * MCU directly, and the descriptor already says so: flash_bytes is zero
- * because the flash lives on the module. On those, the header only
- * breaks out GP0-GP22 and GP26-GP28. GP23 is the module's SMPS
- * power-save control, GP24 its VBUS sense and GP25 its LED, and nothing
- * at or above GP29 leaves the module at all.
- *
- * Scanning them reports shorts between pins that are not on the board.
- * FRANK showed GP22-GP23, where GP22 is the tape jumper and GP23 has no
- * net in the schematic whatsoever. Driving the SMPS mode pin to find
- * that out is also not a good idea. */
-static bool off_module(const frank_board_desc_t *b, unsigned pin) {
-    if (!b || b->flash_bytes != 0) return false;      /* MCU is on the board */
-    if (pin >= 23 && pin <= 25) return true;
-    if (pin >= 29) return true;
-    return false;
+static void claim_run(pinmask_t *m, int base, int count) {
+    if (base == PIN_NC) return;
+    for (int i = 0; i < count; i++) claim(m, base + i);
 }
 
-/* Is this pin driven by something other than us?
- *
- * The ESP-01S sits on the UART pair and drives its TX continuously
- * whenever a module is fitted. An adjacent-pin test cannot say anything
- * useful about a net another chip is holding: it drives one pin, reads
- * the neighbour, and reads back whatever the ESP happened to be doing.
- *
- * On FRANK that produced "GP20-GP21 shorted" on a board whose netlist
- * has them on separate nets — GP20 to the gamepad ports and the ESP
- * URXD, GP21 to the gamepad ports and the ESP UTXD. Nothing ties them;
- * one of them simply is not ours to drive. */
-static bool externally_driven(const frank_pins_t *p, unsigned pin) {
-    if (p->esp_uart_tx != PIN_NC && pin == (unsigned)p->esp_uart_tx) return true;
-    if (p->esp_uart_rx != PIN_NC && pin == (unsigned)p->esp_uart_rx) return true;
+static pinmask_t claimed_pins(const frank_board_desc_t *b) {
+    pinmask_t m = 0;
+    if (!b) return m;
+    const frank_pins_t *p = &b->pins;
 
-    /* The gamepad data lines too. Each carries a 3V3 clamp diode to
-     * ground and a 1K series resistor out to a connector that is usually
-     * empty, and with a pad plugged in the controller drives it. None of
-     * that is a net this test can read a verdict from — FRANK reported
-     * GP26-GP27 with nothing wrong on the board. */
-    if (p->pad_d1 != PIN_NC && pin == (unsigned)p->pad_d1) return true;
-    if (p->pad_d2 != PIN_NC && pin == (unsigned)p->pad_d2) return true;
-    return false;
-}
+    claim(&m, p->uart_tx);      claim(&m, p->uart_rx);
+    claim(&m, p->ps2_kb_clk);   claim(&m, p->ps2_kb_dat);
+    claim(&m, p->ps2_ms_clk);   claim(&m, p->ps2_ms_dat);
+    claim(&m, p->sd_dat0);      claim(&m, p->sd_cs);
+    claim(&m, p->sd_clk);       claim(&m, p->sd_cmd);
+    claim(&m, p->sd_dat1);      claim(&m, p->sd_dat2);
+    claim(&m, p->i2s_data);     claim(&m, p->i2s_mclk);
+    claim_run(&m, p->i2s_clk_base, 2);
+    claim_run(&m, p->video_base, 8);
+    claim(&m, p->psram_cs);
+    claim(&m, p->psram_soft_sclk); claim(&m, p->psram_soft_mosi);
+    claim(&m, p->psram_soft_miso);
+    claim(&m, p->led_ws2812);   claim(&m, p->led_plain);
+    claim(&m, p->esp_uart_tx);  claim(&m, p->esp_uart_rx);
+    claim(&m, p->esp_chip_pu);  claim(&m, p->esp_gpio0);
+    claim(&m, p->esp_spi_miso); claim(&m, p->esp_spi_cs);
+    claim(&m, p->esp_spi_sck);  claim(&m, p->esp_spi_mosi);
+    claim(&m, p->esp_hs);       claim(&m, p->esp_ready);
+    claim(&m, p->esp_mux_sel);
+    claim(&m, p->pad_latch);    claim(&m, p->pad_clk);
+    claim(&m, p->pad_d1);       claim(&m, p->pad_d2);
+    claim(&m, p->tape_in);      claim(&m, p->dip);
+    claim(&m, p->i2c_sda);      claim(&m, p->i2c_scl);
+    claim(&m, p->onewire);      claim(&m, p->pio_usb_dp);
+    claim(&m, p->ay_rclk);      claim(&m, p->ay_srclk);
+    claim(&m, p->ay_ser);
+    claim_run(&m, p->link_a_data, 10);
+    claim_run(&m, p->link_b_data, 10);
+    claim(&m, p->link_fs);      claim(&m, p->link_db_out);
+    claim(&m, p->link_db_in);
 
-/* Does this pin belong to the link — bus or control? */
-static bool link_pin(const frank_pins_t *p, unsigned pin) {
-    if (p->link_a_data != PIN_NC &&
-        pin >= (unsigned)p->link_a_data &&
-        pin <= (unsigned)p->link_a_data + 9) return true;
-    if (p->link_b_data != PIN_NC &&
-        pin >= (unsigned)p->link_b_data &&
-        pin <= (unsigned)p->link_b_data + 9) return true;
-
-    if (p->link_fs     != PIN_NC && pin == (unsigned)p->link_fs)     return true;
-    if (p->link_db_out != PIN_NC && pin == (unsigned)p->link_db_out) return true;
-    if (p->link_db_in  != PIN_NC && pin == (unsigned)p->link_db_in)  return true;
-    return false;
+    /* Four boards socket a Pico-form-factor module, which the descriptor
+     * already records by leaving flash_bytes at zero: the flash is on the
+     * module. There the header breaks out GP0-GP22 and GP26-GP28 only.
+     * GP23 is the SMPS power-save control, GP24 its VBUS sense, GP25 its
+     * LED, and nothing at GP29 or above leaves the module. Driving the
+     * SMPS mode pin to discover that is a bad idea on its own merits. */
+    if (b->flash_bytes == 0) {
+        claim_run(&m, 23, 3);
+        for (int i = 29; i < 48; i++) claim(&m, i);
+    }
+    return m;
 }
 
 static ui_test_state_t t_gpio_short(const detect_result_t *d, char *detail,
                                     unsigned len, test_progress_fn p) {
-    const frank_pins_t *pins = d->board ? &d->board->pins : NULL;
-    unsigned found = 0;
+    unsigned found = 0, tested = 0;
     int first_a = -1, first_b = -1;
 
     const unsigned top = (d->mcu == FRANK_MCU_RP2350B) ? 47 : 29;
+    const pinmask_t used = claimed_pins(d->board);
 
     for (unsigned pin = 0; pin < top; pin++) {
         if (p) p((int)((pin * 1000) / top), NULL);
 
-        /* Skip the console UART. video_test_pins() puts the pad function
-         * back, but it still drives the line low for tens of
-         * milliseconds, which mangles whatever is being transmitted. A
-         * short between the two UART pins is also not a defect this
-         * board could survive far enough to report. */
-        if (pins && pins->uart_tx != PIN_NC &&
-            (pin == (unsigned)pins->uart_tx ||
-             pin + 1 == (unsigned)pins->uart_tx)) continue;
-        if (pins && pins->uart_rx != PIN_NC &&
-            (pin == (unsigned)pins->uart_rx ||
-             pin + 1 == (unsigned)pins->uart_rx)) continue;
+        /* Both pins of the pair must be unclaimed. */
+        const pinmask_t pair = ((pinmask_t)1u << pin) | ((pinmask_t)1u << (pin + 1));
+        if (used & pair) continue;
+        tested++;
 
-        /* Skip the video pins: the sink's own termination ties them
-         * together as far as this test can tell. */
-        if (pins && pins->video_base != PIN_NC &&
-            pin + 1 >= (unsigned)pins->video_base &&
-            pin <= (unsigned)pins->video_base + 7) continue;
 
-        /* Skip everything belonging to the inter-processor link.
-         *
-         * The data buses, because by design both ends sit on consecutive
-         * pins and would be reported as shorts every run.
-         *
-         * And the control lines — FS, and both doorbells — because this
-         * test *drives* pins for tens of milliseconds. FS held high is
-         * how the master asks the slave to reboot, so scanning across it
-         * reset the slave; driving the doorbells left the handshake out
-         * of step. The symptom was a link that answered a probe from the
-         * idle loop and then failed every HELLO during the run that
-         * followed, which looked like an intermittent link and was in
-         * fact this test breaking it. */
-        if (pins && link_pin(pins, pin))     continue;
-        if (pins && link_pin(pins, pin + 1)) continue;
 
-        if (pins && audio_pin(pins, pin))     continue;
-        if (pins && audio_pin(pins, pin + 1)) continue;
-
-        if (pins && externally_driven(pins, pin))     continue;
-        if (pins && externally_driven(pins, pin + 1)) continue;
-
-        if (off_module(d->board, pin))     continue;
-        if (off_module(d->board, pin + 1)) continue;
 
         int link = video_test_pins(pin, pin + 1);
         if (link & 1) {
@@ -285,7 +253,15 @@ static ui_test_state_t t_gpio_short(const detect_result_t *d, char *detail,
                  found > 1 ? " +more" : "");
         return TEST_FAIL;
     }
-    snprintf(detail, len, "no shorts");
+
+    /* The count is the point. On a board where the descriptor claims
+     * almost every pin this test has almost nothing to look at, and
+     * saying so is the difference between evidence and reassurance. */
+    if (tested == 0) {
+        snprintf(detail, len, "no free pin pairs to test");
+        return TEST_NORUN;
+    }
+    snprintf(detail, len, "no shorts in %u pairs", tested);
     return TEST_PASS;
 }
 

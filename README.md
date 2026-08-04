@@ -71,15 +71,32 @@ test anything.
 
 ## Getting started
 
-1. Hold **BOOTSEL**, connect USB, and drop `frank-test_<version>_master.uf2`
-   onto the drive that appears.
-2. Connect a display. HDMI is the default; see [Video](#video) for the others.
-3. Attach a USB or PS/2 keyboard.
-4. Press **S** and pick your board.
-5. Press **A** to run everything.
+1. Pick the image for your silicon from the table below.
+2. Hold **BOOTSEL**, connect USB, and drop the `.uf2` onto the drive that
+   appears.
+3. Connect a display. HDMI is the default; see [Video](#video) for the others.
+4. Attach a USB or PS/2 keyboard.
+5. Press **S** and pick your board.
+6. Press **A** to run everything.
 
-On a Core 2 or Core 2U, flash `frank-test_<version>_slave.uf2` to the second chip
-as well. Without it the link tests correctly report that nothing answered.
+### Which image
+
+The test firmware is one program that works out which board it is on at run
+time, so the only thing a build has to get right is the **package**. Get it
+wrong and it does not misbehave subtly, it hard-faults on the first access to a
+GPIO the package does not have.
+
+| Board | Image |
+|---|---|
+| miniFRANK, microFRANK, zeroFRANK | `rp2350a` |
+| MegaFRANK, Nyx, OldSkoolFRANK, FRANK Next | `rp2350b` |
+| FRANK, FRANK PGA | whichever module is in the socket: a Pico 2 is `rp2350a`, a Pico Plus 2 is `rp2350b` |
+| FRANK Core 2, Core 2U — master | `rp2350b` |
+| FRANK Core 2, Core 2U — slave | `slave` |
+
+The slave image is a different program: the link peer the master talks to. Flash
+it to the second chip of a Core 2 or Core 2U, or "Processor link" and "Slave
+reset" will correctly report that nothing answered.
 
 ---
 

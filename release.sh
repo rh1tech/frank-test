@@ -11,11 +11,14 @@
 # Two images come out of this, and both are needed to test a Core 2 or a
 # Core 2U completely:
 #
-#   master  the test firmware itself. This is the one with the interface
-#           on it; it is what you flash to test a board.
-#   slave   the link peer. The inter-processor link cannot be tested from
-#           one end — "Processor link" and "Slave reset" report no answer
-#           unless the other chip is running this.
+#   rp2350a  the test firmware for the 30-GPIO package
+#   rp2350b  the test firmware for the 48-GPIO package
+#   slave    the link peer. The inter-processor link cannot be tested from
+#            one end: "Processor link" and "Slave reset" report no answer
+#            unless the other chip is running this.
+#
+# The first two are the same program. Which one a board takes depends
+# only on the silicon in it, and the README has the table.
 #
 # Usage: ./release.sh [VERSION]
 #   VERSION   e.g. "1.00". Prompted with the next minor if omitted.
@@ -97,9 +100,23 @@ build_one() {
     fi
 }
 
-build_one "master" app   app/build-release   frank_core2_master \
-          frank-test           "frank-test_${VERSION_US}_master.uf2"
-build_one "slave"  slave slave/build-release frank_core2u_slave \
+# Three images, and the split is by silicon rather than by board.
+#
+# The test firmware is one program: it works out which board it is on at
+# run time, so the only thing a build has to get right is the package.
+# Every RP2350A target takes the same image and every RP2350B target
+# takes the same image. Flashing the wrong one does not misbehave subtly
+# — it hard-faults on the first access to a GPIO the package does not
+# have — so the names say the package, not a board.
+#
+# The slave image is a different program: the link peer that the Core 2
+# and Core 2U masters talk to. It is RP2350A, but it is listed separately
+# because you flash it for a different reason.
+build_one "rp2350a" app   app/build-rel-a   frank_a \
+          frank-test           "frank-test_${VERSION_US}_rp2350a.uf2"
+build_one "rp2350b" app   app/build-rel-b   frank_b \
+          frank-test           "frank-test_${VERSION_US}_rp2350b.uf2"
+build_one "slave"   slave slave/build-release frank_core2u_slave \
           frank-core2u-slave   "frank-test_${VERSION_US}_slave.uf2"
 
 echo ""
