@@ -96,7 +96,11 @@ static bool s_shift, s_ctrl, s_alt;
 bool ui_ps2_init(int kbd_clk, int mouse_clk) {
     if (kbd_clk < 0) return false;
 
-    s_kbd_up = ps2_kbd_pio_init(PS2_PIO, (uint)kbd_clk);
+    /* Idempotent for the keyboard: main() brings it up early so the
+     * video boot window has something to listen to, then calls again for
+     * the mouse once a display is running. A second ps2_kbd_pio_init()
+     * would claim a second state machine for the same keyboard. */
+    if (!s_kbd_up) s_kbd_up = ps2_kbd_pio_init(PS2_PIO, (uint)kbd_clk);
     if (!s_kbd_up) return false;
 
     /* The mouse only when the caller says its pins are free. */

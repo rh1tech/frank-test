@@ -716,8 +716,47 @@ int main(void) {
     video_detect_run(g_detect.board, &g_video);
     video_detect_report(&g_video);
 
+    /* The keyboard before the boot window, so there is something to
+     * hold a key on. The window's only input used to be the console, and
+     * on every board with PS/2 the mouse now takes GP0/GP1 from the
+     * console UART — which left exactly those boards unable to choose a
+     * video mode. */
+    {
+        const frank_pins_t *ip = g_detect.board ? &g_detect.board->pins : NULL;
+        if (ip && ip->ps2_kb_clk != PIN_NC) {
+            ui_input_init_keyboard(ip->ps2_kb_clk);
+            video_select_add_source(ui_input_getchar, "keyboard");
+        }
+    }
+
     stage("video select");
     video_select_boot_window(g_detect.board, &g_video, 2000, &g_choice);
+
+    /* Autodetect prefers HDMI, whatever the RGB probe thought.
+     *
+     * The probe cannot confirm a sink — no FRANK board wires hot-plug
+     * detect, and its own report says so. It reads the loading on
+     * GP12-19, which HDMI, VGA and composite all share, and a VGA
+     * signature there is consistent with a VGA monitor, an HDMI monitor
+     * loading the ladder, or nothing plugged in at all.
+     *
+     * While HSTX HDMI was the only backend this cost nothing: a verdict
+     * of VGA found no backend and fell through to HDMI. Once VGA became
+     * real the same verdict started opening it, and a MegaFRANK with an
+     * HDMI monitor went dark on a guess.
+     *
+     * So an unconfirmed verdict no longer overrides the default. Every
+     * board in the fleet that has VGA also has HDMI, so nothing becomes
+     * unreachable; VGA and composite are a boot key or a menu choice,
+     * both of which are deliberate. */
+    if (g_choice.source == VIDEO_CHOICE_AUTO && !g_video.any_sink &&
+        g_choice.mode != VIDEO_HDMI &&
+        g_detect.board && (g_detect.board->caps & CAP_VIDEO_HDMI)) {
+        printf("[video] autodetect said %s but could not confirm a sink; "
+               "using HDMI. Hold V or C at boot to override.\n",
+               frank_video_mode_name(g_choice.mode));
+        g_choice.mode = VIDEO_HDMI;
+    }
 
     /* The boot window and the sticky setting both check the board's
      * capabilities, which is the wrong half of the question — a board

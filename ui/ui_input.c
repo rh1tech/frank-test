@@ -50,6 +50,22 @@ void ui_ps2_task(void);
 bool ui_ps2_mouse_read(int *dx, int *dy, int *wheel, unsigned *buttons);
 #endif
 
+void ui_input_init_keyboard(int ps2_kbd_clk) {
+#if UI_INPUT_PS2
+    ui_ps2_init(ps2_kbd_clk, -1);
+#else
+    (void)ps2_kbd_clk;
+#endif
+}
+
+int ui_input_getchar(void) {
+    const int k = ui_input_getkey();
+    if (k == UI_KEY_NONE) return -1;
+    if (k & UI_KEY_ALT)   return -1;
+    if (k > 0xFF)         return -1;
+    return k;
+}
+
 void ui_input_init(int ps2_kbd_clk, int ps2_mouse_clk) {
     if (s_init_done) return;
     s_init_done = true;

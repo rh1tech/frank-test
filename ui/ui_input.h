@@ -48,6 +48,18 @@ typedef struct {
  * up on a board using the serial console costs the console. */
 void ui_input_init(int ps2_kbd_clk, int ps2_mouse_clk);
 
+/* The PS/2 keyboard alone, cheap and immediate.
+ *
+ * Called before video selection so the two-second boot window has an
+ * input. It used to have only the console, and on every board with PS/2
+ * the mouse now takes GP0/GP1 from the console UART — which left those
+ * boards with no way to choose a video mode at all. */
+void ui_input_init_keyboard(int ps2_kbd_clk);
+
+/* Next key from the keyboard as a plain character, or -1. For the video
+ * boot window, which wants one letter and has no use for arrows. */
+int  ui_input_getchar(void);
+
 /* Service the USB host stack. Must be called often: TinyUSB host is
  * cooperative, and a loop that goes away for a second drops reports. */
 void ui_input_task(void);
