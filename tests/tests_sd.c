@@ -44,7 +44,8 @@
  * PROVENANCE
  *
  * The CID and CSD decode, and the manufacturer table, are ported from
- * SpeccyP's drivers/pico_fatfs/tf_card.c — decode_cid_register(),
+ * SpeccyP by Constantin (billgilbert7000),
+ * https://github.com/billgilbert7000/SpeccyP — drivers/pico_fatfs/tf_card.c — decode_cid_register(),
  * decode_csd_register() and manufacturer_map[]. One difference:
  * SpeccyP's get_manufacturer_name() returns NULL for an unknown ID and
  * the caller strncpy()s it, which would fault on the first unrecognised

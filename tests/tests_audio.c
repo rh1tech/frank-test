@@ -389,8 +389,9 @@ static void pwm_quiet(const frank_pins_t *pins) {
 
 /* Two AY-3-8910 clones behind a pair of chained 74HC595s.
  *
- * The 16-bit word format is taken from SpeccyP's aySoft.h, which drives
- * the same arrangement:
+ * The 16-bit word format is taken from aySoft.h in SpeccyP, by Constantin
+ * (billgilbert7000), https://github.com/billgilbert7000/SpeccyP — which
+ * drives the same arrangement:
  *
  *     * R * B 1 0 W A  d d d d d d d d
  *       ^   ^ ^^^ ^ ^  \--- data ---/

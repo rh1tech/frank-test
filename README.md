@@ -393,13 +393,13 @@ top.
 |---|---|---|
 | Composite PAL/NTSC encoder (`drivers/tv`) | [frank-msx](https://github.com/rh1tech/frank-msx), from murmnes | Mikhail Matveev, after the Murmulator lineage |
 | NES/SNES gamepad PIO reader (`drivers/nespad`) | [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) | shuichitakano, fhoedemakers (MIT) |
-| SD CID/CSD decode and manufacturer table (`tests/tests_sd.c`) | SpeccyP, `drivers/pico_fatfs/tf_card.c` | DnCraptor and contributors |
+| SD CID/CSD decode and manufacturer table (`tests/tests_sd.c`) | [SpeccyP](https://github.com/billgilbert7000/SpeccyP), `drivers/pico_fatfs/tf_card.c` | Constantin (billgilbert7000) and contributors |
 | FatFs (`drivers/fatfs`) | [elm-chan.org](http://elm-chan.org/fsw/ff/) | ChaN (BSD-style) |
 | I²S audio PIO (`drivers/audio_i2s.pio`) | Raspberry Pi Pico examples lineage | |
 | USB HID host, XInput (`drivers/usbhid`) | TinyUSB and contributors | |
 | HSTX VGA register configuration | DispHSTX | Miroslav Nemecek |
 | Adjacent-pin short scan | [murmulator-tester](https://github.com/DnCraptor/murmulator-tester) | DnCraptor |
-| TurboSound 74HC595 word format | SpeccyP, `aySoft.h` | DnCraptor |
+| TurboSound 74HC595 word format | [SpeccyP](https://github.com/billgilbert7000/SpeccyP), `aySoft.h` | Constantin (billgilbert7000) |
 
 The vendored composite driver needed two edits, both because of how this firmware
 allocates its hardware rather than out of preference:
