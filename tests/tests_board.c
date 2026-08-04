@@ -192,6 +192,14 @@ static bool off_module(const frank_board_desc_t *b, unsigned pin) {
 static bool externally_driven(const frank_pins_t *p, unsigned pin) {
     if (p->esp_uart_tx != PIN_NC && pin == (unsigned)p->esp_uart_tx) return true;
     if (p->esp_uart_rx != PIN_NC && pin == (unsigned)p->esp_uart_rx) return true;
+
+    /* The gamepad data lines too. Each carries a 3V3 clamp diode to
+     * ground and a 1K series resistor out to a connector that is usually
+     * empty, and with a pad plugged in the controller drives it. None of
+     * that is a net this test can read a verdict from — FRANK reported
+     * GP26-GP27 with nothing wrong on the board. */
+    if (p->pad_d1 != PIN_NC && pin == (unsigned)p->pad_d1) return true;
+    if (p->pad_d2 != PIN_NC && pin == (unsigned)p->pad_d2) return true;
     return false;
 }
 

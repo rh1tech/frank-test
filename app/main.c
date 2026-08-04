@@ -770,19 +770,27 @@ int main(void) {
         const frank_pins_t *ip = g_detect.board ? &g_detect.board->pins : NULL;
         const int kbd = (ip && ip->ps2_kb_clk != PIN_NC) ? ip->ps2_kb_clk : -1;
 
-        /* The PS/2 mouse only when it is not sitting on the console.
+        /* The PS/2 mouse, even though it costs the console.
          *
          * On every FRANK board that has PS/2 the mouse is GP0/GP1, which
-         * is also UART0. Bringing it up would take the serial console
-         * away, and on a diagnostic firmware the console is worth more
-         * than a pointer that a keyboard can already substitute for. */
+         * is also UART0. This started out declining to take those pins,
+         * on the reasoning that a diagnostic firmware needs its console
+         * more than a pointer. That was the wrong way round: testing the
+         * PS/2 mouse is the whole reason the port is on the board, and a
+         * rig that quietly refuses to exercise a connector is not doing
+         * its job. The console survives on every board without PS/2, and
+         * the screen is the primary output regardless.
+         *
+         * Said out loud on the way past, while the console still
+         * works. */
         int mouse = (ip && ip->ps2_ms_clk != PIN_NC) ? ip->ps2_ms_clk : -1;
         if (mouse >= 0 && ip->uart_tx != PIN_NC &&
             (ip->uart_tx == mouse || ip->uart_rx == mouse ||
              ip->uart_tx == mouse + 1 || ip->uart_rx == mouse + 1)) {
-            printf("[input] PS/2 mouse shares GP%d/%d with the console UART; "
-                   "not started\n", mouse, mouse + 1);
-            mouse = -1;
+            printf("[input] PS/2 mouse takes GP%d/%d from the console UART; "
+                   "this is the last line you will see\n", mouse, mouse + 1);
+            stdio_flush();
+            sleep_ms(20);
         }
 
         ui_input_init(kbd, mouse);
