@@ -17,13 +17,38 @@
 // Internal state
 //--------------------------------------------------------------------
 
-#define MAX_REPORT 4
+/* A keyboard/touchpad combo puts several collections behind one
+ * interface, each with its own report ID, so four is not enough to see
+ * them all — and a report this misses is one whose ID goes unnoticed. */
+#define MAX_REPORT 8
 
 // Per-device, per-instance HID info for generic report parsing
 static struct {
     uint8_t report_count;
     tuh_hid_report_info_t report_info[MAX_REPORT];
+
+    /* True when the descriptor declares report IDs, which means every
+     * report on this interface arrives with the ID as its first byte. */
+    bool uses_report_id;
 } hid_info[CFG_TUH_HID];
+
+/* Strip the report ID, where there is one.
+ *
+ * A boot-protocol mouse report is buttons, x, y. A device that uses
+ * report IDs shifts all of that along by one, so parsing it as the boot
+ * layout reads buttons from the ID, x from the buttons and y from x —
+ * which is why a combo keyboard/touchpad (1611:2800) moved the pointer
+ * vertically whichever way the finger went: its X arrived where Y was
+ * expected, and its Y fell into the wheel byte. Plain mice declare no
+ * report IDs and are unaffected. */
+static inline void hid_strip_report_id(uint8_t instance,
+                                       uint8_t const **report, uint16_t *len) {
+    if (instance >= CFG_TUH_HID) return;
+    if (!hid_info[instance].uses_report_id) return;
+    if (*len < 1) return;
+    (*report)++;
+    (*len)--;
+}
 
 // Previous keyboard report for detecting key changes
 static hid_keyboard_report_t prev_kbd_report = { 0, 0, {0} };
@@ -653,6 +678,24 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
     uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
     printf("USB HID mounted: dev_addr=%d, instance=%d, protocol=%d\n", dev_addr, instance, itf_protocol);
 
+    /* Parse the descriptor whatever the interface claims to be. Boot
+     * keyboards and mice were skipped here, on the reasonable-looking
+     * grounds that their layout is fixed — but a composite device can
+     * present as a boot mouse and still send report IDs, and nothing
+     * downstream could tell. */
+    if (instance < CFG_TUH_HID) {
+        hid_info[instance].report_count = tuh_hid_parse_report_descriptor(
+            hid_info[instance].report_info, MAX_REPORT, desc_report, desc_len);
+
+        hid_info[instance].uses_report_id = false;
+        for (uint8_t i = 0; i < hid_info[instance].report_count && i < MAX_REPORT; i++)
+            if (hid_info[instance].report_info[i].report_id != 0)
+                hid_info[instance].uses_report_id = true;
+
+        if (hid_info[instance].uses_report_id)
+            printf("  -> reports carry an ID byte\n");
+    }
+
     if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
         keyboard_connected = 1;
         printf("  -> Keyboard detected\n");
@@ -754,6 +797,7 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
 
     switch (itf_protocol) {
         case HID_ITF_PROTOCOL_KEYBOARD:
+            hid_strip_report_id(instance, &report, &len);
             if (report && len >= sizeof(hid_keyboard_report_t)) {
                 process_kbd_report((hid_keyboard_report_t const *)report, &prev_kbd_report);
                 prev_kbd_report = *(hid_keyboard_report_t const *)report;
@@ -764,6 +808,7 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
             // wheel (4); hid_mouse_report_t is 5. Pad short reports
             // instead of dropping them — the old `len >= sizeof(...)`
             // check silently ignored most real mice.
+            hid_strip_report_id(instance, &report, &len);
             if (report && len >= 3) {
                 hid_mouse_report_t padded = {0};
                 memcpy(&padded, report, len < sizeof(padded) ? len : sizeof(padded));
