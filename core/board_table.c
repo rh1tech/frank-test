@@ -215,9 +215,14 @@ const frank_board_desc_t frank_board_table[] = {
 /* ---------------------------------------------------------------- */
 {
     .id = FRANK_BOARD_FRANK, .name = "FRANK", .slug = "frank",
-    /* The U6 socket takes a Pico 1 or a Pico 2. Only Pico 2 is ever
-     * fitted, so this is an RP2350A board — see PLAN.md 1.4. */
-    .mcu = FRANK_MCU_RP2350A,
+    /* Either package, because the socket decides.
+     *
+     * This said RP2350A on the reasoning that only a Pico 2 is ever
+     * fitted. A Pimoroni Pico Plus 2 is an RP2350B in the same
+     * footprint, and one is fitted, so the assumption was simply wrong.
+     * The board is whatever module is in the socket, which is exactly
+     * what FRANK_MCU_ANY is for. */
+    .mcu = FRANK_MCU_ANY,
     .role = FRANK_ROLE_SINGLE,
     .caps = CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE
           | CAP_AUDIO_I2S | CAP_AUDIO_AMP | CAP_AUDIO_MUX
