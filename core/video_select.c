@@ -61,12 +61,22 @@ static struct {
 } g_sources[MAX_SOURCES];
 static unsigned g_source_count;
 
-/* The console is always available and costs nothing, so it registers
- * itself rather than making every caller remember to. */
+/* The console registers itself rather than making every caller remember
+ * to — but only where there is one. On every board with PS/2 the mouse
+ * sits on GP0/GP1, which is UART0, so getchar() there is not reading a
+ * console at all: it is reading the mouse's data line and calling the
+ * chatter a keystroke. A byte that happens to be 'v' or 'c' silently
+ * picks VGA or composite, which is how MegaFRANK came up with no HDMI
+ * signal on every boot. The caller knows whether the pins are a console
+ * and says so. */
 static int console_key_source(void) {
     int c = getchar_timeout_us(0);
     return (c == PICO_ERROR_TIMEOUT) ? -1 : c;
 }
+
+static bool g_console_is_real = true;
+
+void video_select_no_console(void) { g_console_is_real = false; }
 
 void video_select_add_source(video_key_source_fn fn, const char *name) {
     if (g_source_count < MAX_SOURCES) {
@@ -114,9 +124,9 @@ void video_select_boot_window(const frank_board_desc_t *board,
                               video_choice_t *out) {
     memset(out, 0, sizeof(*out));
 
-    /* Register the console once, on first use. */
+    /* Register the console once, on first use, if it is one. */
     static bool console_registered = false;
-    if (!console_registered) {
+    if (!console_registered && g_console_is_real) {
         video_select_add_source(console_key_source, "console");
         console_registered = true;
     }

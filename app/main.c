@@ -670,8 +670,13 @@ int main(void) {
      * which is what 640x480@60 TMDS needs. ui_video_hstx.c also sets
      * clk_hstx explicitly, so the video path survives a different choice
      * here — but this is the pairing frank_core2u ships and is proven. */
-    vreg_set_voltage(VREG_VOLTAGE_1_50);
-    sleep_ms(10);
+    /* The regulator is deliberately left alone. 252 MHz is within the
+     * RP2350's stock operating point and needs no help; raising the core
+     * to 1.50 V for it is a large overvolt against a 1.10 V nominal and
+     * pushes flash and USB timing out of spec for nothing. frank-msx
+     * runs this same clock on this same hardware without touching vreg,
+     * and says as much in its own bring-up. Only an overclock past 252
+     * would justify it, and then the flash timings have to move too. */
     if (!set_sys_clock_khz(252000, false))
         set_sys_clock_khz(126000, false);
 
@@ -703,6 +708,29 @@ int main(void) {
     detect_run(&g_detect);
     detect_report(&g_detect);
 
+    /* Pretend to be another board, for bring-up on a bench rig.
+     *
+     * Boards in this fleet share the video pins and often the chip, so
+     * what separates them at boot is the descriptor, not the hardware.
+     * A board that misbehaves in the field can therefore be reproduced
+     * on whichever board has a debug probe on it, by borrowing its
+     * descriptor. Off in every shipped image.
+     *
+     *   cmake -B bld -DPICO_BOARD=frank_b -DFRANK_FORCE_BOARD=<id> */
+#if defined(FRANK_FORCE_BOARD)
+    {
+        const frank_board_desc_t *forced =
+            frank_board_desc((frank_board_id_t)FRANK_FORCE_BOARD, FRANK_ROLE_SINGLE);
+        if (forced) {
+            printf("[detect] FRANK_FORCE_BOARD: posing as %s\n", forced->name);
+            g_detect.board = forced;
+        } else {
+            printf("[detect] FRANK_FORCE_BOARD=%d: no such board\n",
+                   FRANK_FORCE_BOARD);
+        }
+    }
+#endif
+
     /* Memory throughput, while core 1 is still parked. See
      * detect_benchmark() for why this cannot wait until the tests run. */
     stage("benchmark");
@@ -727,6 +755,18 @@ int main(void) {
             ui_input_init_keyboard(ip->ps2_kb_clk);
             video_select_add_source(ui_input_getchar, "keyboard");
         }
+
+        /* And take the console away where it is not one. The PS/2 mouse
+         * shares GP0/GP1 with UART0, so its power-up chatter arrives at
+         * getchar() as characters; one of them landing on 'v' or 'c'
+         * chooses a video mode nobody asked for. */
+        if (ip && (ip->ps2_ms_dat == PICO_DEFAULT_UART_RX_PIN ||
+                   ip->ps2_ms_clk == PICO_DEFAULT_UART_RX_PIN ||
+                   ip->ps2_ms_dat == PICO_DEFAULT_UART_TX_PIN ||
+                   ip->ps2_ms_clk == PICO_DEFAULT_UART_TX_PIN)) {
+            printf("[video] UART0 is the PS/2 mouse here; not a key source\n");
+            video_select_no_console();
+        }
     }
 
     stage("video select");
@@ -745,6 +785,21 @@ int main(void) {
                frank_video_mode_name(g_choice.mode));
         g_choice.mode = VIDEO_AUTO;
     }
+
+    /* A bring-up escape hatch, off in every shipped image. Selection
+     * has several layers - a saved setting, a boot key, detection, the
+     * board default - and when a board comes up dark it is not obvious
+     * which of them chose, or whether any of them is at fault rather
+     * than the HSTX driver underneath. This skips the lot and asks for
+     * HDMI directly, which splits that question in one flash.
+     *
+     *   cmake -B bld -DPICO_BOARD=frank_b -DFRANK_FORCE_VIDEO=1   (1=HDMI 2=VGA 3=composite) */
+#if FRANK_FORCE_VIDEO
+    printf("[video] FRANK_FORCE_VIDEO=%d: selection skipped\n",
+           FRANK_FORCE_VIDEO);
+    g_choice.mode   = (frank_video_mode_t)FRANK_FORCE_VIDEO;
+    g_choice.source = VIDEO_CHOICE_DEFAULT;
+#endif
 
     stage("video open");
     frank_video_mode_t opened = ui_video_open(g_choice.mode);

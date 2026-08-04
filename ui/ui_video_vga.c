@@ -124,6 +124,17 @@ static bool vga_init(void) {
     extern uint8_t *ui_video_front_bits(void);
     fb_bits = ui_video_front_bits();
 
+    /* Core 1 is reset before it is launched, not merely launched.
+     *
+     * ui_video_switch() changes mode by persisting the choice and
+     * rebooting, and a watchdog reboot does not reset core 1: it carries
+     * on running the previous scanout loop across the restart. The next
+     * boot then spins in multicore_launch_core1() waiting for a handshake
+     * from a core that is already busy, and hangs before any backend
+     * opens - no signal on any output, which reads as dead video rather
+     * than as a hung boot. A cold power-on hides it, so it only bites
+     * after a mode switch. */
+    multicore_reset_core1();
     multicore_launch_core1(vga_output_core1_run);
     return true;
 }

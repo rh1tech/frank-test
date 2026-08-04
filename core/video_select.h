@@ -38,6 +38,10 @@
  * link dependency of the core. */
 typedef int (*video_key_source_fn)(void);
 
+/* Say the UART pins are not a console on this board — on every board
+ * with PS/2 they are the mouse. Call before the boot window. */
+void video_select_no_console(void);
+
 void video_select_add_source(video_key_source_fn fn, const char *name);
 
 typedef enum {

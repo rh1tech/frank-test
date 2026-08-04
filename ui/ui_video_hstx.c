@@ -130,6 +130,17 @@ static bool hstx_init(void) {
      * which is exactly the failure this cost an evening to find: the
      * backend reported success, the log said "HSTX HDMI 640x480", and
      * the capture card showed its no-signal pattern. */
+    /* Core 1 is reset before it is launched, not merely launched.
+     *
+     * ui_video_switch() changes mode by persisting the choice and
+     * rebooting, and a watchdog reboot does not reset core 1: it carries
+     * on running the previous scanout loop across the restart. The next
+     * boot then spins in multicore_launch_core1() waiting for a handshake
+     * from a core that is already busy, and hangs before any backend
+     * opens - no signal on any output, which reads as dead video rather
+     * than as a hung boot. A cold power-on hides it, so it only bites
+     * after a mode switch. */
+    multicore_reset_core1();
     multicore_launch_core1(video_output_core1_run);
 
     running = true;

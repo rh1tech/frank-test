@@ -138,3 +138,13 @@ else()
 endif()
 
 pico_add_extra_outputs(frank-test)
+
+# Bring-up escape hatch: open HDMI directly, skipping video selection.
+# Off unless asked for; see app/main.c.
+if(FRANK_FORCE_BOARD)
+    target_compile_definitions(frank-test PRIVATE FRANK_FORCE_BOARD=${FRANK_FORCE_BOARD})
+endif()
+
+if(FRANK_FORCE_VIDEO)
+    target_compile_definitions(frank-test PRIVATE FRANK_FORCE_VIDEO=${FRANK_FORCE_VIDEO})
+endif()

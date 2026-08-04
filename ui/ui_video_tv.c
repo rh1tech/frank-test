@@ -338,6 +338,17 @@ static bool tv_init(void) {
     tv_frame = ui_video_spare_bits();
     memset(tv_frame, 0, TV_W * TV_H);
 
+    /* Core 1 is reset before it is launched, not merely launched.
+     *
+     * ui_video_switch() changes mode by persisting the choice and
+     * rebooting, and a watchdog reboot does not reset core 1: it carries
+     * on running the previous scanout loop across the restart. The next
+     * boot then spins in multicore_launch_core1() waiting for a handshake
+     * from a core that is already busy, and hangs before any backend
+     * opens - no signal on any output, which reads as dead video rather
+     * than as a hung boot. A cold power-on hides it, so it only bites
+     * after a mode switch. */
+    multicore_reset_core1();
     multicore_launch_core1(tv_core1_run);
     return true;
 }
