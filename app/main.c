@@ -732,31 +732,6 @@ int main(void) {
     stage("video select");
     video_select_boot_window(g_detect.board, &g_video, 2000, &g_choice);
 
-    /* Autodetect prefers HDMI, whatever the RGB probe thought.
-     *
-     * The probe cannot confirm a sink — no FRANK board wires hot-plug
-     * detect, and its own report says so. It reads the loading on
-     * GP12-19, which HDMI, VGA and composite all share, and a VGA
-     * signature there is consistent with a VGA monitor, an HDMI monitor
-     * loading the ladder, or nothing plugged in at all.
-     *
-     * While HSTX HDMI was the only backend this cost nothing: a verdict
-     * of VGA found no backend and fell through to HDMI. Once VGA became
-     * real the same verdict started opening it, and a MegaFRANK with an
-     * HDMI monitor went dark on a guess.
-     *
-     * So an unconfirmed verdict no longer overrides the default. Every
-     * board in the fleet that has VGA also has HDMI, so nothing becomes
-     * unreachable; VGA and composite are a boot key or a menu choice,
-     * both of which are deliberate. */
-    if (g_choice.source == VIDEO_CHOICE_AUTO && !g_video.any_sink &&
-        g_choice.mode != VIDEO_HDMI &&
-        g_detect.board && (g_detect.board->caps & CAP_VIDEO_HDMI)) {
-        printf("[video] autodetect said %s but could not confirm a sink; "
-               "using HDMI. Hold V or C at boot to override.\n",
-               frank_video_mode_name(g_choice.mode));
-        g_choice.mode = VIDEO_HDMI;
-    }
 
     /* The boot window and the sticky setting both check the board's
      * capabilities, which is the wrong half of the question — a board

@@ -228,9 +228,33 @@ void video_detect_run(const frank_board_desc_t *board, video_detect_t *out) {
     out->vga_adapter = (out->clock_pair_code == 0x00) ||
                        (out->clock_pair_code == 0x1F);
 
-    if (out->vga_monitor || out->vga_adapter) {
+    /* The VGA signature is measured, reported, and deliberately not
+     * acted on where there is also an HDMI socket.
+     *
+     * (a) reads the RGB ladder as loaded whenever the pins sit low under
+     * a pull-up. A VGA monitor's 75-ohm terminations do that. So do the
+     * board's own ladder resistors, which are soldered to GP12-19 and
+     * cannot be disconnected. MegaFRANK reports a VGA monitor with
+     * nothing in the VGA socket at all, and always will: the test cannot
+     * separate a display from the board it is mounted on.
+     *
+     * (b) has the same trouble from the other side. HDMI, VGA and
+     * composite all share GP12-19, so a code on the clock pair says
+     * something is loading those pins, not which connector it arrived
+     * through.
+     *
+     * Neither can confirm a sink, because no board wires hot-plug
+     * detect. Acting on them cost a working HDMI display on MegaFRANK.
+     * Where a board has HDMI, that is the default and the measurements
+     * stay in the report as evidence rather than as a decision. VGA and
+     * composite are a boot key or a menu choice, both deliberate.
+     *
+     * A VGA-only board is the one case where the verdict still stands:
+     * there is nothing else it could be. */
+    if ((out->vga_monitor || out->vga_adapter) &&
+        !(board->caps & CAP_VIDEO_HDMI)) {
         out->verdict  = VIDEO_VGA;
-        out->any_sink = true;
+        out->any_sink = false;
     } else if (board->caps & CAP_VIDEO_HDMI) {
         /* No VGA signature. That is consistent with an HDMI sink and
          * also with nothing being plugged in at all — the two are not
