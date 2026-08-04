@@ -39,7 +39,14 @@ typedef struct {
 
 /* Bring up whatever input hardware this board has. Safe to call when
  * there is none — it simply finds nothing. */
-void ui_input_init(void);
+/* `ps2_kbd_clk` and `ps2_mouse_clk` are GPIO numbers, or -1 for absent.
+ * The data line is always clock + 1, which is what the PS/2 driver's PIO
+ * program requires and what every FRANK board wires.
+ *
+ * Pass -1 for the mouse when its pins are needed elsewhere. On these
+ * boards the mouse sits on GP0/GP1, which is also UART0, so bringing it
+ * up on a board using the serial console costs the console. */
+void ui_input_init(int ps2_kbd_clk, int ps2_mouse_clk);
 
 /* Service the USB host stack. Must be called often: TinyUSB host is
  * cooperative, and a loop that goes away for a second drops reports. */
@@ -80,8 +87,8 @@ enum {
 };
 
 /* Next key, or UI_KEY_NONE. Merges every source: USB HID keyboard, PS/2
- * when that driver lands, and the console. One queue, because the caller
- * genuinely does not care which keyboard a key came from. */
+ * keyboard, and the console. One queue, because the caller genuinely does
+ * not care which keyboard a key came from. */
 int ui_input_getkey(void);
 
 /* For the report line: what was found. */

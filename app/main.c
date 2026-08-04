@@ -357,16 +357,35 @@ static void show_board_info(void) {
  * operator can only confirm what the firmware already suspects, and the
  * whole reason this exists is that they may know something the pins
  * cannot show. */
-static const frank_board_desc_t *g_pick[16];
-static const char *g_pick_names[16];
+#define PICK_MAX 24
+static const frank_board_desc_t *g_pick[PICK_MAX];
+static const char *g_pick_names[PICK_MAX];
+static char        g_pick_label[PICK_MAX][32];
 
 static void set_board_dialog(void) {
     int n = 0;
-    for (unsigned i = 0; i < frank_board_table_len && n < 16; i++) {
+    for (unsigned i = 0; i < frank_board_table_len && n < PICK_MAX; i++) {
         const frank_board_desc_t *b = &frank_board_table[i];
-        if (b->mcu != g_detect.mcu && b->mcu != FRANK_MCU_ANY) continue;
+
+        /* Every board, including the ones whose silicon does not match.
+         *
+         * This used to skip anything whose MCU differed from what was
+         * detected, which quietly hid FRANK, microFRANK, miniFRANK and
+         * zeroFRANK whenever the chip was an RP2350B. That is the wrong
+         * call twice over: the whole point of this dialog is that the
+         * operator knows something the probes do not, and a detector
+         * that got the package wrong is exactly when you need to
+         * override it. A mismatch is annotated, not hidden. */
+        const bool fits = (b->mcu == g_detect.mcu || b->mcu == FRANK_MCU_ANY);
+        if (fits) {
+            snprintf(g_pick_label[n], sizeof(g_pick_label[n]), "%s", b->name);
+        } else {
+            snprintf(g_pick_label[n], sizeof(g_pick_label[n]), "%s  (%s)",
+                     b->name, frank_mcu_class_name(b->mcu));
+        }
+
         g_pick[n]       = b;
-        g_pick_names[n] = b->name;
+        g_pick_names[n] = g_pick_label[n];
         n++;
     }
     if (!n) return;
@@ -739,7 +758,27 @@ int main(void) {
     tests_link_init(&g_detect);
 
     stage("input");
-    ui_input_init();
+    {
+        const frank_pins_t *ip = g_detect.board ? &g_detect.board->pins : NULL;
+        const int kbd = (ip && ip->ps2_kb_clk != PIN_NC) ? ip->ps2_kb_clk : -1;
+
+        /* The PS/2 mouse only when it is not sitting on the console.
+         *
+         * On every FRANK board that has PS/2 the mouse is GP0/GP1, which
+         * is also UART0. Bringing it up would take the serial console
+         * away, and on a diagnostic firmware the console is worth more
+         * than a pointer that a keyboard can already substitute for. */
+        int mouse = (ip && ip->ps2_ms_clk != PIN_NC) ? ip->ps2_ms_clk : -1;
+        if (mouse >= 0 && ip->uart_tx != PIN_NC &&
+            (ip->uart_tx == mouse || ip->uart_rx == mouse ||
+             ip->uart_tx == mouse + 1 || ip->uart_rx == mouse + 1)) {
+            printf("[input] PS/2 mouse shares GP%d/%d with the console UART; "
+                   "not started\n", mouse, mouse + 1);
+            mouse = -1;
+        }
+
+        ui_input_init(kbd, mouse);
+    }
     printf("[input] keyboard:%s  mouse:%s\n",
            ui_input_keyboard_connected() ? "yes" : "no",
            ui_input_mouse_connected() ? "yes" : "no");

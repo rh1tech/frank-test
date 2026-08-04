@@ -41,7 +41,16 @@ static ui_pointer_t s_ptr;
 static bool         s_last_button;
 static bool         s_init_done;
 
-void ui_input_init(void) {
+#if UI_INPUT_PS2
+bool ui_ps2_init(int kbd_clk, int mouse_clk);
+bool ui_ps2_keyboard_up(void);
+bool ui_ps2_mouse_up(void);
+int  ui_ps2_getkey(void);
+void ui_ps2_task(void);
+bool ui_ps2_mouse_read(int *dx, int *dy, int *wheel, unsigned *buttons);
+#endif
+
+void ui_input_init(int ps2_kbd_clk, int ps2_mouse_clk) {
     if (s_init_done) return;
     s_init_done = true;
 
@@ -54,15 +63,27 @@ void ui_input_init(void) {
 #if UI_INPUT_USB_HID
     usbhid_init();
 #endif
+
+#if UI_INPUT_PS2
+    ui_ps2_init(ps2_kbd_clk, ps2_mouse_clk);
+#else
+    (void)ps2_kbd_clk; (void)ps2_mouse_clk;
+#endif
 }
 
 void ui_input_task(void) {
 #if UI_INPUT_USB_HID
     usbhid_task();
 #endif
+#if UI_INPUT_PS2
+    ui_ps2_task();
+#endif
 }
 
 bool ui_input_mouse_connected(void) {
+#if UI_INPUT_PS2
+    if (ui_ps2_mouse_up()) return true;
+#endif
 #if UI_INPUT_USB_HID
     return usbhid_mouse_connected() != 0;
 #else
@@ -71,6 +92,9 @@ bool ui_input_mouse_connected(void) {
 }
 
 bool ui_input_keyboard_connected(void) {
+#if UI_INPUT_PS2
+    if (ui_ps2_keyboard_up()) return true;
+#endif
 #if UI_INPUT_USB_HID
     return usbhid_keyboard_connected() != 0;
 #else
@@ -80,11 +104,46 @@ bool ui_input_keyboard_connected(void) {
 
 const ui_pointer_t *ui_input_pointer_last(void) { return &s_ptr; }
 
+/* Apply one mouse report to the shared pointer state. Both the USB and
+ * PS/2 paths land here so the cursor behaves identically whichever is
+ * attached, and a board with both does not get two sets of rules. */
+static void pointer_apply(int dx, int dy, int wheel, unsigned buttons) {
+    if (dx || dy) {
+        const int ox = s_ptr.x, oy = s_ptr.y;
+        s_ptr.x += dx;
+        s_ptr.y += dy;
+        if (s_ptr.x < 0) s_ptr.x = 0;
+        if (s_ptr.y < 0) s_ptr.y = 0;
+        if (s_ptr.x >= UI_SCREEN_W) s_ptr.x = UI_SCREEN_W - 1;
+        if (s_ptr.y >= UI_SCREEN_H) s_ptr.y = UI_SCREEN_H - 1;
+        if (s_ptr.x != ox || s_ptr.y != oy) s_ptr.moved = true;
+    }
+
+    /* s_last_button is the same edge-detector the USB path uses, so the
+     * two cannot disagree about whether a click has already been
+     * reported. */
+    const bool down = (buttons & 1u) != 0;
+    if (down && !s_last_button) s_ptr.pressed  = true;
+    if (!down && s_last_button) s_ptr.released = true;
+    s_last_button = down;
+    s_ptr.button  = down;
+
+    s_ptr.wheel += wheel;
+}
+
 const ui_pointer_t *ui_input_pointer(void) {
     s_ptr.pressed  = false;
     s_ptr.released = false;
     s_ptr.moved    = false;
     s_ptr.wheel    = 0;
+
+#if UI_INPUT_PS2
+    if (ui_ps2_mouse_up()) {
+        s_ptr.present = true;
+        int dx = 0, dy = 0, w = 0; unsigned b = 0;
+        if (ui_ps2_mouse_read(&dx, &dy, &w, &b)) pointer_apply(dx, dy, w, b);
+    }
+#endif
 
 #if UI_INPUT_USB_HID
     s_ptr.present = usbhid_mouse_connected() != 0;
@@ -246,6 +305,10 @@ int ui_input_getkey(void) {
 #if UI_INPUT_USB_HID
     int k = hid_getkey();
     if (k != UI_KEY_NONE) return k;
+#endif
+#if UI_INPUT_PS2
+    int p = ui_ps2_getkey();
+    if (p != UI_KEY_NONE) return p;
 #endif
     return console_getkey();
 }

@@ -60,6 +60,9 @@ add_executable(frank-test
     # the inter-processor link and pio1 the I2S audio.
     ${FW_ROOT}/drivers/nespad/nespad.c
 
+    # PS/2 keyboard and mouse, vendored from cabal by way of frank-quest.
+    ${FW_ROOT}/drivers/ps2/ps2.c
+
     # Analogue VGA out of the HSTX, raw mode. Shares GP12-19 and the two
     # DMA channels with pico_hdmi; only one of the two is ever brought up.
     ${FW_ROOT}/drivers/pico_vga/vga_output.c
@@ -87,10 +90,12 @@ set_source_files_properties(
 
 pico_generate_pio_header(frank-test ${FW_ROOT}/common/link_bus.pio)
 pico_generate_pio_header(frank-test ${FW_ROOT}/drivers/audio_i2s.pio)
+pico_generate_pio_header(frank-test ${FW_ROOT}/drivers/ps2/ps2.pio)
 
 target_include_directories(frank-test PRIVATE
     ${FW_ROOT}/tests
     ${FW_ROOT}/drivers/nespad
+    ${FW_ROOT}/drivers/ps2
     ${FW_ROOT}/drivers/tv)
 
 # Pairs with set_sys_clock_khz(252000) in main(): clk_hstx = clk_sys/2 =

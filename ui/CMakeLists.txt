@@ -37,6 +37,7 @@ add_library(frank_ui_video STATIC
     ui_video_tv.c
     ui_cursor.c
     ui_input.c
+    ui_input_ps2.c
 )
 
 # USB HID host: keyboard and mouse. The RP2350's native USB controller is
@@ -69,7 +70,18 @@ target_sources(frank_ui_video PRIVATE ui_video_hstx.c)
 # executable that also links it — two copies of the scanout core and a
 # duplicate-symbol link failure.
 target_include_directories(frank_ui_video PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/../drivers)
+    ${CMAKE_CURRENT_LIST_DIR}/../drivers
+    ${CMAKE_CURRENT_LIST_DIR}/../drivers/ps2)
+
+# PS/2 keyboard and mouse. On by default: five boards in the fleet have
+# the connectors and nothing else can drive the interface on a board with
+# no USB host. Set UI_INPUT_PS2=OFF to leave pio1 entirely to I2S.
+option(UI_INPUT_PS2 "PS/2 keyboard and mouse input" ON)
+if(UI_INPUT_PS2)
+    target_compile_definitions(frank_ui_video PUBLIC UI_INPUT_PS2=1)
+else()
+    target_compile_definitions(frank_ui_video PUBLIC UI_INPUT_PS2=0)
+endif()
 
 target_include_directories(frank_ui_video PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
@@ -79,6 +91,7 @@ target_link_libraries(frank_ui_video
     pico_stdlib
     pico_multicore      # the HSTX scanout owns core 1
     hardware_clocks
+    hardware_pio        # the PS/2 receiver
     hardware_watchdog
 )
 

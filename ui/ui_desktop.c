@@ -331,8 +331,12 @@ static void draw_manual_strip(ui_surface_t *s, const ui_desktop_t *d) {
 static void draw_picker(ui_surface_t *s, const ui_desktop_t *d) {
     if (!d->picker_title) return;
 
-    const int rows = d->picker_count > 12 ? 12 : d->picker_count;
-    const int w = 300;
+    /* Sixteen rows and a wider box. The fleet is thirteen descriptors and
+     * the list no longer filters any of them out, so twelve meant the
+     * board you wanted could be off the end of a list you did not know
+     * was scrolling. Sixteen rows at 14px still fits 480 comfortably. */
+    const int rows = d->picker_count > 16 ? 16 : d->picker_count;
+    const int w = 360;
     const int h = UI_TITLE_H + UI_WIN_PAD + rows * 14 + 14 + 18 + UI_WIN_PAD;
     const int x = (s->w - w) / 2;
     const int y = (s->h - h) / 2 - 20;
