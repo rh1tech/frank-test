@@ -1,15 +1,12 @@
 # What else can be tested
 
-An analysis of the gap between what the board descriptors *declare* and what
-this firmware currently *exercises*, with a suggested order of work.
-
 Every capability bit in `core/frank_caps.h` is a claim about hardware. Fourteen
-of the thirty-one are currently tested. This document takes the rest in turn,
-says what a test could honestly prove, and — as important — what it could not.
+of the thirty-one are tested today. This goes through the rest: what a test could
+honestly prove, what it could not, and roughly what order to do them in.
 
-The principle throughout is the one the firmware already follows: a rig that
-claims coverage it does not have is worse than one that admits the gap. Several
-items below are marked *not worth building* for exactly that reason.
+A few items are marked as not worth building. That is the same principle the
+firmware already runs on. A rig claiming coverage it does not have is worse than
+one that owns up.
 
 ---
 
@@ -17,217 +14,220 @@ items below are marked *not worth building* for exactly that reason.
 
 | Capability | State |
 |---|---|
-| `PSRAM_QMI`, `PSRAM_SOFTSPI` | Tested — probe and address-seeded sweep |
-| `SD` | Tested — CID/CSD and sector 0 |
-| `RTC_DS3231` | Partially — an ACK at 0x68 only |
-| `ONEWIRE_DS2401` | Tested — ROM read |
-| `LINK` | Tested — handshake, throughput, slave reset |
-| `VIDEO_HDMI/VGA/COMPOSITE` | Tested — frames counted per backend |
-| `AUDIO_I2S`, `AUDIO_MUX`, `TURBOSOUND` | Interactive — driven, not verified |
+| `PSRAM_QMI`, `PSRAM_SOFTSPI` | Tested. Probe and address-seeded sweep |
+| `SD` | Tested. CID/CSD and sector 0 |
+| `RTC_DS3231` | Partly. An ack at 0x68, nothing more |
+| `ONEWIRE_DS2401` | Tested. ROM read |
+| `LINK` | Tested. Handshake, throughput, slave reset |
+| `VIDEO_HDMI/VGA/COMPOSITE` | Tested. Frames counted per backend |
+| `AUDIO_I2S`, `AUDIO_MUX`, `TURBOSOUND` | Interactive. Driven, not verified |
 | `GAMEPAD_NES` | Interactive |
 | `TAPE_IN`, `TAPE_DIP_GATED` | Interactive |
-| `PS2` | **Untested** |
-| `USB_HOST`, `USB_DEVICE`, `USB_HUB`, `USB_MUX`, `PIO_USB` | **Untested** |
-| `GAMEPAD_DB9` | **Untested** |
-| `ESP01`, `ESP32_SPI` | **Untested** |
-| `LED_PLAIN`, `LED_WS2812` | **Untested** |
-| `DIPSWITCH` | **Untested** |
-| `I2C` | **Untested** as a bus |
-| `AUDIO_AMP`, `AUDIO_CODEC_I2C` | **Untested** |
-| `SD_4BIT` | **Untested** |
+| `PS2` | Untested |
+| `USB_HOST`, `USB_DEVICE`, `USB_HUB`, `USB_MUX`, `PIO_USB` | Untested |
+| `GAMEPAD_DB9` | Untested |
+| `ESP01`, `ESP32_SPI` | Untested |
+| `LED_PLAIN`, `LED_WS2812` | Untested |
+| `DIPSWITCH` | Untested |
+| `I2C` | Untested as a bus |
+| `AUDIO_AMP`, `AUDIO_CODEC_I2C` | Untested |
+| `SD_4BIT` | Untested |
 
 ---
 
-## Tier 1 — clear wins, low risk
+## Tier 1: clear wins, low risk
 
-These test real hardware, fail for one identifiable reason, and need no
-judgement call from the operator.
+These test real hardware, fail for one identifiable reason, and ask nothing of
+the operator's judgement.
 
 ### 1. PS/2 keyboard and mouse (`CAP_PS2`)
 
-Descriptors already carry `ps2_kb_clk/dat` and `ps2_ms_clk/dat`. Present on most
-of the fleet and completely unexercised.
+The descriptors already carry `ps2_kb_clk/dat` and `ps2_ms_clk/dat`. Most of the
+fleet has the connectors. Nothing touches them.
 
-A PS/2 device drives the clock line itself, so **presence is measurable without
-a device doing anything**: idle both lines high, then watch for a clock burst on
-plug-in or key press. A dialog in the shape of the gamepad one — draw a keyboard
-and a mouse, show scancodes and movement deltas as they arrive.
+A PS/2 device drives the clock line itself, which is the useful part: presence is
+measurable without the device doing anything. Idle both lines high, then watch
+for a clock burst when something is plugged in or a key goes down. The dialog
+would look like the gamepad one, drawing a keyboard and a mouse and showing
+scancodes and movement deltas as they arrive.
 
-- **Proves** the connector, the level shifting and the PIO receiver.
-- **Cannot prove** anything without a device attached — so an empty port must
-  report *could not run*, never a failure.
-- Notable: the PS/2 connectors are a common cold-solder site. This is probably
-  the highest-value missing test in the list.
+It proves the connector, the level shifting and the PIO receiver. It proves
+nothing at all with no device attached, so an empty port has to report *could not
+run* rather than failing.
+
+Those PS/2 connectors are a common cold-solder site, which is why this is
+probably the most valuable thing missing.
 
 ### 2. Config DIP switches (`CAP_DIPSWITCH`)
 
-The descriptor has a `dip` pin, and *Manual Steps* already asks the operator to
-set switches the firmware cannot reach. On boards where the DIP is wired to a
-GPIO it **can** be read — which turns an instruction into a verification.
+The descriptor has a `dip` pin, and *Manual Steps* already asks you to set
+switches the firmware cannot reach. Where the DIP is wired to a GPIO it can be
+read, and that turns an instruction into a verification.
 
-- **Proves** the switch positions actually in force.
-- **Changes the shape of other tests**: the tape input is DIP-gated on three
-  boards, so instead of "close S2 1-4 and try again", the firmware could say
-  "S2 1-4 is open — that is why there is no signal".
-- Cheap: one GPIO read, plus surfacing it in the *Manual Steps* panel.
+It would prove which switch positions are actually in force. More interestingly
+it changes other tests. The tape input is DIP-gated on three boards, so rather
+than "close S2 1-4 and try again", the firmware could say "S2 1-4 is open, that
+is why there is no signal".
+
+One GPIO read, plus surfacing it in the *Manual Steps* panel.
 
 ### 3. LEDs (`CAP_LED_PLAIN`, `CAP_LED_WS2812`)
 
 A plain LED is one GPIO. A WS2812 is one PIO state machine and a colour cycle.
 
-- **Proves** the driver pin and, for WS2812, the timing-critical bit protocol.
-- **Cannot prove** the LED is fitted or lit — this is an operator-confirmed
-  check, so it belongs in a dialog ("do you see red, then green, then blue?"),
-  not a pass/fail row.
-- Worth it mainly because a WS2812 that does not light is usually a data-line
-  fault, and that *is* worth catching.
+That proves the driver pin, and for the WS2812 the timing-critical bit protocol.
+It cannot prove the LED is fitted or lit, so this belongs in a dialog that asks
+whether you see red, then green, then blue, rather than in a pass/fail row.
+
+Mostly worth doing because a WS2812 that stays dark is usually a data-line fault,
+and that is worth catching.
 
 ### 4. I²C bus scan (`CAP_I2C`)
 
-The detector already probes 0x68 and the codec address. A full 0x08–0x77 scan
+Detection already probes 0x68 and the codec address. A full 0x08 to 0x77 scan
 costs milliseconds and lists everything present.
 
-- **Proves** the bus pulls up and clocks, independent of any one device.
-- Diagnostic value beyond pass/fail: an unexpected address is informative, and a
-  bus with *nothing* on it distinguishes a dead bus from a missing chip.
+It proves the bus pulls up and clocks regardless of what is on it. The output is
+useful beyond pass/fail: an unexpected address tells you something, and a bus
+with nothing on it separates a dead bus from a missing chip.
 
 ### 5. RTC oscillator, not just presence
 
 The current test acks at 0x68 and stops. A DS3231 with a dead crystal or a flat
 backup cell acks perfectly.
 
-- Read the seconds register, wait, read again. **Proves the oscillator runs.**
-- Read the oscillator-stop flag in the status register — that is exactly what it
-  is for, and it reports a battery that has been flat since last power-down.
-- Small change, materially better test.
+Read the seconds register, wait, read it again, and you know the oscillator runs.
+The status register also has an oscillator-stop flag, which is exactly what it is
+for and reports a battery that has been flat since the last power-down. Small
+change, much better test.
 
 ---
 
-## Tier 2 — worthwhile, more work
+## Tier 2: worthwhile, more work
 
 ### 6. USB HID host reporting (`CAP_USB_HOST`)
 
-The input layer already enumerates keyboards and mice — the interface depends on
-it — but nothing reports what was found. A dialog showing VID/PID, product
-string, endpoint and live key/button/wheel events would make an invisible
-subsystem visible.
+The input layer already enumerates keyboards and mice, since the interface
+depends on it, but nothing reports what it found. A dialog showing VID/PID,
+product string, endpoint and live key, button and wheel events would make an
+invisible subsystem visible.
 
-- **Proves** the USB connector, the host stack and the device.
-- Effectively free: the data is already flowing, it just is not displayed.
+That proves the connector, the host stack and the device. It is nearly free: the
+data is already flowing, it just is not displayed anywhere.
 
 ### 7. USB hub and mux (`CAP_USB_HUB`, `CAP_USB_MUX`)
 
-Core 2U carries a hub. Enumerate through it and report the device count and per
-port occupancy.
+Core 2U has a hub. Enumerate through it, report the device count and which ports
+are occupied. That proves the hub powers up and enumerates.
 
-- **Proves** the hub powers up and enumerates.
-- The mux is switch-selected, so like the audio mux this is half a path: the
-  firmware can say which side it can see and must say that it cannot select.
+The mux is switch-selected, so like the audio mux it is half a path. The firmware
+can say which side it sees, and has to say it cannot pick.
 
 ### 8. PIO-USB second port (`CAP_PIO_USB`)
 
-`pio_usb_dp` is in the descriptor. A second USB host on PIO is a well-trodden
-path but it needs a spare PIO — and all three are now committed (link, I²S,
-gamepads). Realistically this needs the gamepad reader to release pio2 when its
-dialog closes, which it currently does not.
+`pio_usb_dp` is in the descriptor. A second USB host on PIO is well-trodden, but
+it wants a spare PIO and all three are committed now: link, I²S, gamepads. It
+really needs the gamepad reader to release pio2 when its dialog closes, which it
+does not do.
 
-- Flagged as much for the **resource conflict** as for the test itself. Worth
-  resolving before more PIO consumers appear.
+Flagged as much for the resource conflict as for the test. Worth resolving before
+another PIO consumer turns up.
 
 ### 9. DB9 gamepads (`CAP_GAMEPAD_DB9`)
 
-OldSkoolFRANK wires Atari-style directly to GPIOs — no shift register, so the
-NES reader does not apply. Simple pin reads, same dialog treatment.
+OldSkoolFRANK wires Atari-style straight to GPIOs. No shift register, so the NES
+reader does not apply. Plain pin reads, same dialog treatment.
 
-### 10. ESP-01S / ESP32 (`CAP_ESP01`, `CAP_ESP32_SPI`)
+### 10. ESP-01S and ESP32 (`CAP_ESP01`, `CAP_ESP32_SPI`)
 
-Descriptors carry a UART pair, chip-enable, GPIO0, a full SPI set, handshake and
-ready lines, and a mux select. Two distinct tests:
+The descriptors carry a UART pair, chip-enable, GPIO0, a full SPI set, handshake
+and ready lines, and a mux select. That is two separate tests.
 
-- **ESP-01S**: toggle CH_PU, send `AT`, expect `OK`. Proves the module is
-  powered, reset-controllable and talking.
-- **ESP32 SPI**: assert CS, exercise the handshake/ready pair.
+For the ESP-01S: toggle CH_PU, send `AT`, expect `OK`. Proves the module is
+powered, reset-controllable and talking. For the ESP32: assert CS and exercise
+the handshake and ready pair.
 
-Both need the module fitted, so absence must report *could not run*.
+Both need the module fitted, so absence has to report *could not run*.
 
 ### 11. SD write, and a results report
 
-Two related ideas.
+Two related ideas. Writing to a card is genuinely destructive so it needs
+explicit consent, but a write, read and restore of one sector in unallocated
+space is a real test of the bidirectional path.
 
-Writing to a card is genuinely destructive, so it needs explicit consent — but a
-write/read/restore of one sector in unallocated space is a real test of the
-bidirectional path.
-
-More valuable: **write the results to the card**. A production rig wants a
-record — DS2401 serial, board type, every measurement, timestamp from the RTC.
-One text file per unit turns this from a bench tool into a traceable process.
+The more valuable half is writing the results *to* the card. A production rig
+wants a record: DS2401 serial, board type, every measurement, a timestamp from
+the RTC. One text file per unit turns this from a bench tool into something
+traceable.
 
 ### 12. SD 4-bit mode (`CAP_SD_4BIT`)
 
-One board wires `sd_dat1`/`sd_dat2`. Testing 4-bit transfer would prove those two
-lines, which 1-bit SPI mode never touches — a solder fault on DAT1 is invisible
-today.
+One board wires `sd_dat1` and `sd_dat2`. Testing 4-bit transfer would prove those
+two lines, which 1-bit SPI mode never touches. A solder fault on DAT1 is
+invisible today.
 
 ---
 
-## Tier 3 — infrastructure, not tests
+## Tier 3: infrastructure rather than tests
 
 ### 13. Burn-in loop
 
-Run the whole suite repeatedly, counting failures per test over time. Catches
-the class of fault a single pass cannot: a PSRAM that fails warm, a link that
+Run the whole suite over and over, counting failures per test. That catches the
+class of fault a single pass never will: PSRAM that fails once warm, a link that
 degrades, an intermittent joint.
 
-- Needs failure counts per row and a running duration, not just the latest state.
-- Pairs naturally with report export.
+Needs per-row failure counts and a running duration rather than just the latest
+state. Pairs naturally with the report export above.
 
 ### 14. Long-run link error rate
 
 The link test measures a burst. A soak measuring bit error rate over minutes
-would characterise it properly — the difference between "it works" and "it works
-reliably".
+would characterise it properly, which is the difference between "it works" and
+"it works reliably".
 
 ### 15. Slave-side self-test
 
-On Core 2 the slave is a whole RP2350 with its own flash and RAM, currently only
-proven to answer. It could run its own memory tests and report results over the
-link, doubling the coverage of a dual-chip board.
+On a Core 2 the slave is a whole RP2350 with its own flash and RAM, and all we
+prove today is that it answers. It could run its own memory tests and report over
+the link, roughly doubling the coverage of a dual-chip board.
 
 ### 16. Clock cross-check
 
 MegaFRANK has a 3.58 MHz crystal for the AYs and a 32.768 kHz one for the RTC.
-Measuring the system clock against the RTC gives a genuine accuracy figure for
-both — a crystal that is present but off-frequency is otherwise undetectable.
+Measuring the system clock against the RTC gives a real accuracy figure for both.
+A crystal that is present but off-frequency is otherwise undetectable.
 
 ---
 
-## Explicitly not worth building
+## Not worth building
 
-- **Audio verification.** No loopback and no ADC anywhere in the fleet. Adding a
-  "PASS" to the audio dialogs would be inventing a result. If a future board
-  routes audio back to an ADC pin, this changes.
-- **Display presence.** No board wires hot-plug detect. *Video output* counting
-  emitted frames is the honest ceiling.
-- **AY readback.** The 74HC595 chain is write-only. Nothing to be done in
-  firmware.
-- **Flash write/erase.** The firmware is running from it. A scratch-sector test
-  is possible but the risk-to-value ratio is poor, and the settings sector
-  already exercises the path incidentally.
+**Audio verification.** No loopback and no ADC anywhere in the fleet. Putting a
+PASS on the audio dialogs would be inventing a result. If some future board
+routes audio back to an ADC pin, this changes.
+
+**Display presence.** No board wires hot-plug detect. *Video output* counting
+emitted frames is as far as honesty goes.
+
+**AY readback.** The 74HC595 chain is write-only. Nothing firmware can do.
+
+**Flash write and erase.** The firmware is running from it. A scratch-sector test
+is possible, but the risk against the value is poor, and the settings sector
+exercises that path incidentally anyway.
 
 ---
 
 ## Suggested order
 
-1. **PS/2 keyboard and mouse** — biggest coverage gap on the most boards
-2. **DIP switch readback** — small, and improves the tape and audio guidance
-3. **RTC oscillator check** — small, closes a real hole in an existing test
-4. **I²C scan** — small, good diagnostic value
-5. **USB HID host reporting** — the data already exists
-6. **Report export to SD** — turns the rig into a traceable process
-7. **LEDs, DB9 gamepads** — quick wins once the dialog pattern is reused
-8. **ESP-01S / ESP32** — needs modules to test against
-9. **Burn-in loop and link soak** — once the above is stable
-10. **PIO-USB** — after resolving PIO ownership
+1. PS/2 keyboard and mouse. Biggest gap, on the most boards
+2. DIP switch readback. Small, and improves the tape and audio guidance
+3. RTC oscillator check. Small, closes a real hole in a test that already exists
+4. I²C scan. Small, good diagnostic value
+5. USB HID host reporting. The data is already there
+6. Report export to SD. Makes the rig traceable
+7. LEDs and DB9 gamepads. Quick once the dialog pattern gets reused
+8. ESP-01S and ESP32. Needs modules to test against
+9. Burn-in loop and link soak. Once the rest is stable
+10. PIO-USB. After sorting out who owns which PIO
 
-Items 1–4 are each an afternoon and would take tested capabilities from fourteen
-to eighteen of thirty-one.
+The first four are each about an afternoon, and between them they would take
+tested capabilities from fourteen to eighteen of thirty-one.
