@@ -297,6 +297,10 @@ worse than one that admits the gap.
 - **Composite lock.** The encoder can be proven to run; whether a television
   syncs to it is something only a television can say.
 
+Fourteen of the thirty-one capability bits are currently tested.
+[docs/ROADMAP.md](docs/ROADMAP.md) takes the remainder in turn — what a test
+could honestly prove, what it could not, and a suggested order of work.
+
 ---
 
 ## Building
