@@ -245,11 +245,19 @@ static void gate_menus(void) {
         { VIDEO_VGA,       CAP_VIDEO_VGA,       CMD_VIDEO_VGA       },
         { VIDEO_COMPOSITE, CAP_VIDEO_COMPOSITE, CMD_VIDEO_COMPOSITE },
     };
+    /* The mode already running is greyed out too. Selecting it is a
+     * no-op that still reads as a command the firmware ignored, and on
+     * the analogue outputs it is worse than nothing: the display drops
+     * sync while the interface repaints for a change that never
+     * happens. */
+    const ui_video_backend_t *open_now = ui_video_current();
     for (unsigned i = 0; i < count_of(vid); i++) {
         const bool on_board = g_detect.board &&
                               (g_detect.board->caps & vid[i].cap);
+        const bool running  = open_now && open_now->mode == vid[i].mode;
         ui_desktop_set_cmd_enabled(vid[i].cmd,
-                                   on_board && ui_video_mode_implemented(vid[i].mode));
+                                   on_board && !running &&
+                                   ui_video_mode_implemented(vid[i].mode));
     }
 }
 
