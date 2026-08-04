@@ -395,7 +395,7 @@ const frank_board_desc_t frank_board_table[] = {
  * master, and it is a bare pad versus a CMOS input — roughly 5 pF. The
  * detector reports the pair as ambiguous rather than guessing. */
 {
-    .id = FRANK_BOARD_CORE2, .name = "FRANK Core 2 (master)",
+    .id = FRANK_BOARD_CORE2, .name = "FRANK Core 2",
     .slug = "core2",
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_MASTER,
     .caps = CAP_VIDEO_HDMI | CAP_AUDIO_I2S | CAP_SD | CAP_PSRAM_QMI
@@ -430,7 +430,7 @@ const frank_board_desc_t frank_board_table[] = {
 
 /* ---------------------------------------------------------------- */
 {
-    .id = FRANK_BOARD_CORE2U, .name = "FRANK Core 2U (master)",
+    .id = FRANK_BOARD_CORE2U, .name = "FRANK Core 2U",
     .slug = "core2u",
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_MASTER,
     .caps = CAP_VIDEO_HDMI | CAP_AUDIO_I2S | CAP_SD | CAP_PSRAM_QMI
@@ -545,15 +545,15 @@ static const frank_board_desc_t fallback_desc = {
     .mcu  = FRANK_MCU_ANY,
     .role = FRANK_ROLE_SINGLE,
     .caps = CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE
-          | CAP_SD | CAP_AUDIO_I2S | CAP_USB_DEVICE,
-    .pins = { PINS_NONE, PINS_UART01, PINS_SD_SPI, PINS_I2S_TDA,
-              .video_base = 12 },
+          | CAP_SD | CAP_AUDIO_I2S | CAP_PS2 | CAP_USB_DEVICE,
+    .pins = { PINS_NONE, PINS_UART01, PINS_PS2_TXS, PINS_SD_SPI,
+              PINS_I2S_TDA, .video_base = 12 },
     .sig = NULL, .sig_len = 0,
     .flash_bytes = 0, .psram_bytes = 0,
     .manual_note = "SELECT A BOARD before testing:  Board > Set Board "
                    "(Alt+B).  Until then only the pin conventions common "
                    "to the whole fleet are assumed - video GP12-19, "
-                   "microSD GP4-7, I2S GP9-11 - which is enough to draw "
+                   "PS/2 GP2-3, microSD GP4-7, I2S GP9-11 - enough to draw "
                    "this screen and not enough to test anything.",
 };
 

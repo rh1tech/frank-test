@@ -158,6 +158,23 @@ static bool audio_pin(const frank_pins_t *p, unsigned pin) {
     return false;
 }
 
+/* Is this pin driven by something other than us?
+ *
+ * The ESP-01S sits on the UART pair and drives its TX continuously
+ * whenever a module is fitted. An adjacent-pin test cannot say anything
+ * useful about a net another chip is holding: it drives one pin, reads
+ * the neighbour, and reads back whatever the ESP happened to be doing.
+ *
+ * On FRANK that produced "GP20-GP21 shorted" on a board whose netlist
+ * has them on separate nets — GP20 to the gamepad ports and the ESP
+ * URXD, GP21 to the gamepad ports and the ESP UTXD. Nothing ties them;
+ * one of them simply is not ours to drive. */
+static bool externally_driven(const frank_pins_t *p, unsigned pin) {
+    if (p->esp_uart_tx != PIN_NC && pin == (unsigned)p->esp_uart_tx) return true;
+    if (p->esp_uart_rx != PIN_NC && pin == (unsigned)p->esp_uart_rx) return true;
+    return false;
+}
+
 /* Does this pin belong to the link — bus or control? */
 static bool link_pin(const frank_pins_t *p, unsigned pin) {
     if (p->link_a_data != PIN_NC &&
@@ -220,6 +237,9 @@ static ui_test_state_t t_gpio_short(const detect_result_t *d, char *detail,
 
         if (pins && audio_pin(pins, pin))     continue;
         if (pins && audio_pin(pins, pin + 1)) continue;
+
+        if (pins && externally_driven(pins, pin))     continue;
+        if (pins && externally_driven(pins, pin + 1)) continue;
 
         int link = video_test_pins(pin, pin + 1);
         if (link & 1) {

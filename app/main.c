@@ -367,6 +367,14 @@ static void set_board_dialog(void) {
     for (unsigned i = 0; i < frank_board_table_len && n < PICK_MAX; i++) {
         const frank_board_desc_t *b = &frank_board_table[i];
 
+        /* Slaves are not something you choose.
+         *
+         * A Core 2 slave is the other half of a board, not a board, and
+         * it runs the peer image rather than this one. Listing it invited
+         * picking it on the master, which would gate every test on the
+         * wrong pin map. */
+        if (b->role == FRANK_ROLE_SLAVE) continue;
+
         /* Every board, including the ones whose silicon does not match.
          *
          * This used to skip anything whose MCU differed from what was

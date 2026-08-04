@@ -138,7 +138,15 @@ frank_caps_t registry_detected_caps(const detect_result_t *d) {
     if (d->i2c_ds3231)    c |= CAP_RTC_DS3231 | CAP_I2C;
     if (d->i2c_tlv320)    c |= CAP_AUDIO_CODEC_I2C | CAP_I2C;
     if (d->onewire_found) c |= CAP_ONEWIRE_DS2401;
-    if (d->link_peer)     c |= CAP_LINK;
+    /* A link peer only counts on a board that has link pins.
+     *
+     * Evidence outranks the table, but not to the point of inventing
+     * hardware. On FRANK the link probe drives GP20-29, which there are
+     * the gamepad ports and the ESP-01S UART, and something answered —
+     * so a single-processor board grew an inter-processor link and ran
+     * two tests against it. */
+    if (d->link_peer && d->board && d->board->pins.link_a_data != PIN_NC)
+        c |= CAP_LINK;
 
     /* Video is not inferred here. A backend that came up proves the
      * firmware configured one, not that anything is plugged in — and
