@@ -57,6 +57,11 @@ static uint32_t mouse_last_tx_us = 0;
 static PIO ps2_pio = NULL;
 static uint ps2_program_offset = 0;
 
+/* The receive program is shared by both state machines, so it is added
+ * once. Adding it per device costs 26 of pio1's 32 instructions and
+ * leaves no room for the I2S program that shares the block. */
+static bool ps2_program_added = false;
+
 // Keyboard state machine
 static uint kbd_sm = 0;
 static uint kbd_clk_pin = 0;
@@ -728,7 +733,10 @@ bool ps2_init(PIO pio, uint kbd_clk, uint mouse_clk) {
         printf("PS/2: Cannot add PIO program\n");
         return false;
     }
-    ps2_program_offset = pio_add_program(pio, &ps2_rx_program);
+    if (!ps2_program_added) {
+        ps2_program_offset = pio_add_program(pio, &ps2_rx_program);
+        ps2_program_added = true;
+    }
     
     // Claim state machines
     int sm = pio_claim_unused_sm(pio, false);
@@ -777,7 +785,10 @@ bool ps2_kbd_pio_init(PIO pio, uint kbd_clk) {
         printf("PS/2 Keyboard: Cannot add PIO program\n");
         return false;
     }
-    ps2_program_offset = pio_add_program(pio, &ps2_rx_program);
+    if (!ps2_program_added) {
+        ps2_program_offset = pio_add_program(pio, &ps2_rx_program);
+        ps2_program_added = true;
+    }
 
     int sm = pio_claim_unused_sm(pio, false);
     if (sm < 0) {
@@ -806,7 +817,10 @@ bool ps2_mouse_pio_init(PIO pio, uint mouse_clk) {
         printf("PS/2 Mouse: Cannot add PIO program\n");
         return false;
     }
-    ps2_program_offset = pio_add_program(pio, &ps2_rx_program);
+    if (!ps2_program_added) {
+        ps2_program_offset = pio_add_program(pio, &ps2_rx_program);
+        ps2_program_added = true;
+    }
     
     // Claim state machine for mouse only
     int sm = pio_claim_unused_sm(pio, false);

@@ -146,9 +146,17 @@ const ui_pointer_t *ui_input_pointer(void) {
 #endif
 
 #if UI_INPUT_USB_HID
-    s_ptr.present = usbhid_mouse_connected() != 0;
+    /* Or-in, never assign.
+     *
+     * This used to write usbhid_mouse_connected() straight into
+     * s_ptr.present, which clobbered the PS/2 block above: with a PS/2
+     * mouse and no USB mouse, present went back to false, the cursor was
+     * never drawn and every report was discarded. It looked exactly like
+     * the PS/2 mouse not working, and the USB one still did. */
+    const bool usb_mouse = usbhid_mouse_connected() != 0;
+    if (usb_mouse) s_ptr.present = true;
 
-    if (s_ptr.present) {
+    if (usb_mouse) {
         usbhid_mouse_state_t m;
         usbhid_get_mouse_state(&m);
 
