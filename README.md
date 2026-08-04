@@ -1,9 +1,8 @@
 # FRANK Test
 
-A universal hardware test firmware for the FRANK family of RP2350 retro-computer
-boards. One image identifies which board it is running on, works out what that
-board actually has, and tests only that — reporting what it measured rather than
-a verdict it cannot support.
+Hardware test firmware for the FRANK family of RP2350 retro-computer boards. One
+image works out which board it is running on, figures out what that board
+actually has, and tests only that.
 
 ![Board Tests](screenshots/board-tests.png)
 
@@ -31,23 +30,19 @@ a verdict it cannot support.
 
 ## What it is
 
-FRANK boards share a lineage — the Murmulator pin conventions — but differ in
-silicon, memory, connectors and audio. Maintaining a separate test firmware per
-board meant a dozen nearly-identical images, each drifting from the others.
+FRANK boards all follow the Murmulator pin conventions, but they differ in
+silicon, memory, connectors and audio. Keeping a separate test firmware for each
+one meant a dozen nearly identical images, and they drifted apart.
 
-This is one image for all of them. It:
+This is one image for all of them. It identifies the board and says how sure it
+is. It gates every test on what that board declares, so a peripheral the board
+does not have reports **n/a** instead of failing. It keeps *could not run*
+separate from *failed*, because those mean different things to whoever is holding
+the board. And it prints what it measured: clock rates, chip IDs, throughput,
+capacities. Not just a tick.
 
-- identifies the board from silicon, an I²C/1-Wire inventory and a GPIO
-  fingerprint, and says how confident it is;
-- gates every test on what that board declares, so a missing peripheral reports
-  **n/a** rather than a failure;
-- distinguishes *could not run* from *failed*, because they mean different
-  things to whoever is holding the board;
-- prints what it measured — clock rates, chip IDs, throughput, capacities — not
-  just a tick.
-
-The interface is a windowed desktop at 640×480, driven entirely from the
-keyboard, with HDMI, VGA and composite output.
+The interface is a windowed desktop at 640×480 with HDMI, VGA and composite
+output, driven entirely from the keyboard.
 
 ---
 
@@ -67,25 +62,24 @@ keyboard, with HDMI, VGA and composite output.
 | FRANK Core 2U | RP2350B + RP2350A | As Core 2, plus tape and a USB hub |
 | FRANK Next | RP2350B | TLV320 codec |
 
-An unidentified board still boots and draws the screen using only the
-conventions common to the whole fleet — video on GP12–19, microSD on GP4–7, I²S
-on GP9–11 — which is enough to show an interface and deliberately not enough to
+An unidentified board still boots and draws the screen. It assumes only the
+conventions the whole fleet shares: video on GP12-19, microSD on GP4-7, I²S on
+GP9-11. That is enough to show you an interface and deliberately not enough to
 test anything.
 
 ---
 
 ## Getting started
 
-1. Hold **BOOTSEL**, connect USB, and drop
-   `frank-test_<version>_master.uf2` onto the mass-storage device that appears.
-2. Connect a display. HDMI is the default; see [Video](#video) for VGA and
-   composite.
+1. Hold **BOOTSEL**, connect USB, and drop `frank-test_<version>_master.uf2`
+   onto the drive that appears.
+2. Connect a display. HDMI is the default; see [Video](#video) for the others.
 3. Attach a USB or PS/2 keyboard.
-4. Press **S** and choose your board.
+4. Press **S** and pick your board.
 5. Press **A** to run everything.
 
-On a Core 2 or Core 2U, also flash `frank-test_<version>_slave.uf2` to the second
-chip. Without it the link tests correctly report that nothing answered.
+On a Core 2 or Core 2U, flash `frank-test_<version>_slave.uf2` to the second chip
+as well. Without it the link tests correctly report that nothing answered.
 
 ---
 
@@ -93,8 +87,8 @@ chip. Without it the link tests correctly report that nothing answered.
 
 ![Menus](screenshots/menus.png)
 
-Everything is reachable from the keyboard, because some boards in this fleet
-have no pointing device at all.
+Everything is reachable from the keyboard. Some boards in this fleet have no
+pointing device at all, so that is not a nicety.
 
 | Key | Action |
 |---|---|
@@ -107,78 +101,80 @@ have no pointing device at all.
 | `E` | Run Selected |
 | `?` | Key help on the console |
 
-A mouse works if one is attached, and the pointer is drawn by patching the
-framebuffer directly rather than recomposing the screen, so it stays responsive
-even while audio is playing.
+A mouse works if you have one. The pointer is drawn by patching the framebuffer
+in place rather than recomposing the screen, so it keeps up even while audio is
+playing.
 
-**Enter BOOTSEL has no keyboard equivalent, deliberately.** It is the one command
-that ends the session, and a stray keypress used to trigger it.
+Enter BOOTSEL has no keyboard shortcut, on purpose. It is the one command that
+ends the session, and a stray keypress used to trigger it.
 
 ### Reading the results
 
 | Mark | Meaning |
 |---|---|
-| ✓ | Passed, with the measurement beside it |
-| ✗ | Failed — this board has the hardware and it did not work |
-| — | **n/a**: the board has no such hardware. Not a defect |
-| ? | **Could not run** — the result is unknown, which is not the same as bad |
+| ✓ | Passed, with the measurement next to it |
+| ✗ | Failed. The board has this hardware and it did not work |
+| — | n/a. The board has no such hardware, which is not a defect |
+| ? | Could not run. The result is unknown, which is not the same as bad |
 
-The *Manual Steps* panel lists switches and jumpers this firmware cannot reach.
-Where a board has an audio mux or a tape jumper, the software half of the path
-can be exercised and the analogue half cannot; saying so is the difference
-between a rig you can trust and one you cannot.
+The *Manual Steps* panel lists switches and jumpers the firmware cannot reach.
+On a board with an audio mux or a tape jumper it can exercise the software half
+of the path and not the analogue half. Saying so is the difference between a rig
+you can trust and one you cannot.
 
 ---
 
 ## Board detection
 
-Four tiers, each narrowing the field, and the result is reported with its
-confidence rather than presented as fact.
+Four tiers, each narrowing the field. The verdict comes with its confidence
+attached rather than being presented as fact.
 
-1. **Silicon.** `SYSINFO_PACKAGE_SEL` separates RP2350A from RP2350B, and the
-   chip revision and unique ID come from the same place. Flash JEDEC ID and
-   PSRAM presence and size follow.
-2. **Inventory.** A DS3231 at 0x68, a TLV320 codec, a DS2401 silicon serial —
-   each present on some boards and not others.
-3. **Fingerprint.** Pins are pulled up, released and classified by how they
-   settle. The result is scored against each descriptor as a *ratio* of pins
-   matched, so a board with seven signature pins does not out-score a board with
-   six simply by having more.
-4. **The operator.** Some boards are genuinely indistinguishable — Core 2 and
-   Core 2U share a pin map exactly. When two descriptors tie, the firmware says
-   so and asks, rather than picking one and being quietly wrong.
+**Silicon.** `SYSINFO_PACKAGE_SEL` separates RP2350A from RP2350B. Chip revision
+and unique ID come from the same place, then flash JEDEC ID, then PSRAM presence
+and size.
+
+**Inventory.** A DS3231 at 0x68, a TLV320 codec, a DS2401 silicon serial. Each is
+on some boards and not others.
+
+**Fingerprint.** Pins get pulled up, released, and classified by how they settle.
+Scoring is a *ratio* of pins matched, not a count, so a board with seven
+signature pins cannot beat a board with six just by having more of them.
+
+**The operator.** Some boards really are indistinguishable. Core 2 and Core 2U
+share a pin map exactly. When two descriptors tie the firmware says so and asks,
+instead of picking one and being quietly wrong.
 
 ![Set Board](screenshots/set-board.png)
 
-The choice is **not** written to flash. A stored answer is invisible, survives
-the operator changing their mind, and follows the firmware rather than the board
-when an image is moved. A reset starts again from what the hardware says.
+Your choice is not written to flash. A stored answer is invisible, it survives
+you changing your mind, and it follows the firmware rather than the board when an
+image gets moved. A reset starts again from what the hardware says.
 
 ---
 
 ## Video
 
-Three backends, all at 640×480, selected at boot or from the Video menu.
+Three backends, all 640×480, chosen at boot or from the Video menu.
 
 | Mode | How | Notes |
 |---|---|---|
-| **HDMI** | HSTX, TMDS | Default. `clk_hstx` at 126 MHz |
-| **VGA** | HSTX, raw 8-lane | Same GP12–19 pins through the resistor ladder |
-| **Composite** | PIO software encoder | PAL/NTSC, 320×240 |
+| HDMI | HSTX, TMDS | Default. `clk_hstx` at 126 MHz |
+| VGA | HSTX, raw 8-lane | Same GP12-19 pins through the resistor ladder |
+| Composite | PIO software encoder | PAL/NTSC, 320×240 |
 
-Hold **H**, **V**, **C** or **A** (auto) during the two-second window at boot, or
-choose from the Video menu — that persists the choice and reboots, because the
-boot path is the only code path that brings a backend up which has ever been
-tested.
+Hold **H**, **V**, **C** or **A** (auto) during the two-second window at boot.
+Choosing from the Video menu instead persists the choice and reboots, because the
+boot path is the only code path that has ever been tested for bringing a backend
+up.
 
-Composite does not get the desktop. It cannot: a composite line carries roughly
-320 usable samples however the source is arranged, and 6-pixel type resampled to
-fit stops being type. It renders its own text page instead — 42 columns by 30
-rows at native resolution, with the same information and a legible result.
+Composite does not get the desktop, and cannot. A composite line carries
+somewhere around 320 usable samples however you arrange the source, and 6-pixel
+type resampled to fit stops being type. It renders its own text page instead: 42
+columns by 30 rows at native resolution, same information, actually legible.
 
-Menu items are enabled only when the board has the connector **and** this
-firmware has a backend for it. An enabled control that silently falls back to
-something else is worse than a greyed-out one.
+Menu items enable only when the board has the connector *and* this firmware has a
+backend for it. An enabled control that quietly falls back to something else is
+worse than a greyed-out one.
 
 ---
 
@@ -188,126 +184,131 @@ something else is worse than a greyed-out one.
 
 | Test | What it proves | What it does not |
 |---|---|---|
-| **Silicon** | MCU class, revision, unique ID, system clock | |
-| **Flash ID** | JEDEC manufacturer/device ID and capacity | Nothing about contents |
-| **Flash read** | Sustained XIP read throughput | |
-| **Flash CRC32** | A CRC over the image — a fingerprint of what is loaded | |
-| **QSPI PSRAM** | The chip answers on its chip select, and its size | |
-| **QSPI PSRAM sweep** | Write-and-verify across the whole part | |
-| **SPI PSRAM** | MegaFRANK's second, bit-banged PSRAM: manufacturer ID | Needs S10 closed |
-| **SPI PSRAM sweep** | One block per 64 KiB, seeded from the address | |
+| Silicon | MCU class, revision, unique ID, system clock | |
+| Flash ID | JEDEC manufacturer and device ID, capacity | Anything about the contents |
+| Flash read | Sustained XIP read throughput | |
+| Flash CRC32 | A CRC over the image, so you can tell what is loaded | |
+| QSPI PSRAM | The chip answers on its chip select, and its size | |
+| QSPI PSRAM sweep | Write and verify across the whole part | |
+| SPI PSRAM | MegaFRANK's second, bit-banged PSRAM: manufacturer ID | Needs S10 closed |
+| SPI PSRAM sweep | One block per 64 KiB, seeded from the address | |
 
-The memory benchmarks run **before** video starts. HSTX scanout contends with
-XIP for the same bus, and measuring afterwards understated flash throughput by a
-factor of four — a number that looked like a hardware fault and was not.
+The memory benchmarks run before video starts. HSTX scanout fights XIP for the
+same bus, and measuring afterwards understated flash throughput by a factor of
+four. That number looked like a hardware fault for a while.
 
-The sweeps seed each block from its own address, so a block read back from the
-wrong place fails rather than matching by luck. That is what catches a dropped
+Each sweep block is seeded from its own address, so a block read back from the
+wrong place fails instead of matching by luck. That is what catches a dropped
 address line.
 
 ### Board peripherals
 
 | Test | What it proves |
 |---|---|
-| **Video detect** | Which output the detector chose, and why |
-| **Video output** | Frames are actually being emitted, by counting them |
-| **RTC** | A DS3231 acknowledges at 0x68 |
-| **Unit serial** | The DS2401 ROM — the only per-unit identity in the fleet that is not a guess |
-| **GPIO short scan** | Adjacent-pin solder bridges |
+| Video detect | Which output the detector chose, and why |
+| Video output | Frames are being emitted, by counting them |
+| RTC | A DS3231 acknowledges at 0x68 |
+| Unit serial | The DS2401 ROM, the only per-unit identity here that is not a guess |
+| GPIO short scan | Adjacent-pin solder bridges |
 
-The short scan skips pins that are *deliberately* tied: the link buses run
-adjacent pins to the same places by design, GP9–11 are joined by the audio
-network, and driving the link's control lines resets the slave. Reporting those
-every run would train the operator to ignore the result.
+The short scan skips pins that are tied together on purpose. The link buses run
+adjacent pins to the same places by design, GP9-11 are joined by the audio
+network, and driving the link's control lines resets the slave. Flagging those
+every run would just teach you to ignore the result.
 
 ### Storage
 
 | Test | What it proves |
 |---|---|
-| **SD card** | CMD0/CMD8/ACMD41 succeed; CID and CSD decode to manufacturer, product, capacity |
-| **SD read** | Sector 0 comes back with a boot signature |
+| SD card | CMD0/CMD8/ACMD41 succeed, and CID and CSD decode to manufacturer, product and capacity |
+| SD read | Sector 0 comes back carrying a boot signature |
 
-Two rows because they fail for different reasons: sixteen bytes of CID can
-succeed on a link that falls apart over 512. An unformatted card reports *could
-not run*, not a failure — that is not a board fault.
+Two rows, because they fail for different reasons. Sixteen bytes of CID can
+succeed over a link that falls apart at 512. An unformatted card reports *could
+not run* rather than failing, since that is not a board fault.
 
 ### Inter-processor link (Core 2 / Core 2U)
 
 | Test | What it proves |
 |---|---|
-| **Processor link** | Handshake, then bidirectional throughput — typically ~96 MiB/s duplex |
-| **Slave reset** | The master can reboot the slave over FS and see it come back |
+| Processor link | Handshake, then bidirectional throughput. Typically around 96 MiB/s duplex |
+| Slave reset | The master can reboot the slave over FS and watch it come back |
 
-Both need the slave image running. The link stack escalates recovery — an FS
-request every second failure, a reset pulse every fourth — because a slave that
-boots late or is reflashed has to be noticed rather than forced into step.
+Both need the slave image running. The link stack escalates recovery on its own:
+an FS request every second failure, a reset pulse every fourth. A slave that boots
+late or gets reflashed has to be noticed rather than forced into step.
 
 ---
 
 ## Interactive checks
 
-Some things cannot be tested by a machine that has no way to observe the result.
-Nothing on any FRANK board can hear its own audio output or read back a
-write-only shift register, so a PASS in a results list would be a claim the
-firmware is in no position to make. These are dialogs you drive instead.
+Some things cannot be tested by a machine with no way to observe the result.
+Nothing on a FRANK board can hear its own audio or read back a write-only shift
+register, so a PASS in the results list would be a claim the firmware has no
+business making. These are dialogs you drive yourself.
 
-### Audio — `Alt`+`U`
+### Audio, `Alt`+`U`
 
 ![Audio](screenshots/audio.png)
 
-**PWM**, **TDA (I²S)** and **TurboSound**, each looping a short melody through
-left, right and centre and naming the channel as it plays. A single tone cannot
-tell a working stereo path from a stuck LRCK — they all sound like success.
+PWM, TDA (I²S) and TurboSound. Each loops a short melody through left, right and
+centre, naming the channel while it plays. One steady tone cannot tell a working
+stereo path from a stuck LRCK. They all sound like success.
 
-On a board with an audio mux the dialog states the switch positions that source
-needs. The mux is a 4:1 selector, not two enables: setting both switches selects
-ground, which is silence and looks exactly like a dead amplifier.
+On a board with an audio mux the dialog tells you which switch positions that
+source needs. The mux is a 4:1 selector rather than two enables, so setting both
+switches picks ground. That is silence, and it looks exactly like a dead
+amplifier.
 
-### NES gamepads — `Tests` ▸ `NES Gamepad(s)`
+### NES gamepads, `Tests` ▸ `NES Gamepad(s)`
 
-Both ports drawn schematically, each button lighting as it is pressed and named
-underneath. A row saying "gamepad: PASS" cannot mean anything; a row saying
+Both ports drawn schematically, with each button lighting up as you press it and
+named underneath. A row saying "gamepad: PASS" cannot mean anything. A row saying
 "0x21" means something to nobody.
 
-### Tape in — `Tests` ▸ `Tape In`
+### Tape in, `Tests` ▸ `Tape In`
 
-The CD4069 squares the audio into a digital edge stream, and this counts and
-times it. The visualisation is a ZX Spectrum loading stripe, and it is not
-decoration: a Spectrum paints one border band per tape pulse, so band thickness
-*is* pulse length. Thick red/cyan bands are pilot tone, thin blue/yellow are
-data, a stalled picture means nothing is arriving — none of which needs anyone to
-read a number.
+The CD4069 squares the incoming audio into digital edges, and this counts and
+times them. The display is a ZX Spectrum loading stripe, which is not decoration:
+a Spectrum paints one border band per tape pulse, so band thickness *is* pulse
+length. Thick red and cyan bands mean pilot tone. Thin blue and yellow mean data.
+A picture that stops moving means nothing is arriving. You do not have to read a
+number to see any of that.
 
 ---
 
 ## What it cannot test
 
-Stated plainly, because a rig that quietly claims coverage it does not have is
-worse than one that admits the gap.
+Worth being blunt about, because a rig that quietly claims coverage it does not
+have is worse than one that owns up.
 
-- **Anything past an audio pin.** No loopback, no ADC. The firmware can prove
-  SCLK and LRCK are clocking, and nothing about the DAC, the amplifier or the
-  speaker.
-- **The AY chips themselves.** The 74HC595 chain is write-only.
-- **Whether a display is attached.** No FRANK board wires hot-plug detect. An
-  absent monitor and a broken output are indistinguishable, so *Video output*
-  counts emitted frames and says only that.
-- **Switch positions.** Every board has switches the firmware cannot read. They
-  are listed in *Manual Steps*.
-- **Composite lock.** The encoder can be proven to run; whether a television
-  syncs to it is something only a television can say.
+Anything past an audio pin. There is no loopback and no ADC. The firmware can
+prove SCLK and LRCK are clocking and nothing whatsoever about the DAC, the
+amplifier or the speaker.
 
-Fourteen of the thirty-one capability bits are currently tested.
-[docs/ROADMAP.md](docs/ROADMAP.md) takes the remainder in turn — what a test
-could honestly prove, what it could not, and a suggested order of work.
+The AY chips. That 74HC595 chain is write-only.
+
+Whether a display is plugged in. No FRANK board wires hot-plug detect, so an
+absent monitor and a broken output look identical. *Video output* counts emitted
+frames and claims nothing more.
+
+Switch positions. Every board has switches the firmware cannot read, and they are
+listed in *Manual Steps*.
+
+Composite lock. The encoder can be shown to run. Whether a television syncs to it
+is something only a television can tell you.
+
+Fourteen of the thirty-one capability bits are tested today.
+[docs/ROADMAP.md](docs/ROADMAP.md) goes through the rest: what a test could
+honestly prove, what it could not, and a sensible order to do them in.
 
 ---
 
 ## Building
 
-Requires the [Pico SDK](https://github.com/raspberrypi/pico-sdk) 2.x and the Arm
-GNU toolchain. `sdk_env.sh` locates the SDK and rejects a stale `PICO_SDK_PATH`
-rather than trusting it.
+You need the [Pico SDK](https://github.com/raspberrypi/pico-sdk) 2.x and the Arm
+GNU toolchain. `sdk_env.sh` finds the SDK, and rejects a stale `PICO_SDK_PATH`
+instead of trusting it.
 
 ```sh
 make build                    # default board (frank_core2_master)
@@ -315,7 +316,7 @@ make build BOARD=frank_core2u_master
 make flash                    # hold BOOTSEL first
 ```
 
-Or directly:
+Or without make:
 
 ```sh
 cmake -S app -B app/build -DPICO_BOARD=frank_core2_master
@@ -324,27 +325,27 @@ cmake --build app/build -j8
 
 ### Console
 
-The build is a USB **HID host** so keyboards and mice can be tested, and the
-RP2350's single USB controller cannot also be a CDC device. The console is
-therefore UART, at 115200. For bring-up work, `-DUI_INPUT_USB_HID=OFF` swaps the
+The build is a USB HID host so that keyboards and mice can be tested, and the
+RP2350's single USB controller cannot be a CDC device at the same time. So the
+console is UART at 115200. For bring-up work, `-DUI_INPUT_USB_HID=OFF` trades the
 host for a USB serial console.
 
 ---
 
 ## Releases
 
-`version.txt` holds `MAJOR MINOR` and is the single source of truth: CMake reads
-it to stamp the banner and the About box, and `release.sh` writes it before
-building, so a binary can never disagree with its filename.
+`version.txt` holds `MAJOR MINOR` and everything reads it. CMake stamps the
+banner and the About box from it, and `release.sh` writes it before building, so
+a binary cannot disagree with its own filename.
 
 ```sh
 ./release.sh 1.00
 ```
 
-Produces, in `release/`:
+That puts two files in `release/`:
 
-- `frank-test_1_00_master.uf2` — the test firmware
-- `frank-test_1_00_slave.uf2` — the link peer for Core 2 / Core 2U
+- `frank-test_1_00_master.uf2`, the test firmware
+- `frank-test_1_00_slave.uf2`, the link peer for Core 2 and Core 2U
 
 ---
 
@@ -362,8 +363,8 @@ slave/        the link peer firmware
 screenshots/  captured over HDMI from real hardware
 ```
 
-`master/`, `probe/` and `selftest/` are inherited from the frank_core2 firmware
-this was branched from. Only `master/src/ui_font.c` is still used.
+`master/`, `probe/` and `selftest/` came along from the frank_core2 firmware this
+was branched from. Only `master/src/ui_font.c` is still used.
 
 ---
 
@@ -373,44 +374,44 @@ this was branched from. Only `master/src/ui_font.c` is still used.
 make hooks    # point git at .githooks
 ```
 
-**This repository's history names the people responsible for it and nobody
-else.** Commit messages crediting an AI — co-author trailers, "generated with"
-advertisements, session links — are rejected by the `commit-msg` hook locally and
-by the `Attribution` job in CI for everyone. A local hook only protects a clone
-that opted in and cannot see a commit made through GitHub's web surface, which is
-why the CI gate is the one that actually enforces the policy.
+This repository's history names the people responsible for it and nobody else.
+Commit messages that credit an AI, whether a co-author trailer, a "generated
+with" advertisement or a session link, get rejected by the `commit-msg` hook
+locally and by the `Attribution` job in CI for everyone else. The local hook only
+protects a clone that opted in, and it never runs for a commit made through
+GitHub's web interface, so CI is what actually enforces this.
 
 ---
 
 ## Attribution
 
-This firmware stands on a good deal of other people's work. Vendored code keeps
-its original authorship and licence; the files carry a provenance note at the
+This firmware leans on a lot of other people's work. Vendored code keeps its
+original authorship and licence, and each file carries a provenance note at the
 top.
 
 | Component | Source | Author |
 |---|---|---|
 | Composite PAL/NTSC encoder (`drivers/tv`) | [frank-msx](https://github.com/rh1tech/frank-msx), from murmnes | Mikhail Matveev, after the Murmulator lineage |
-| NES/SNES gamepad PIO reader (`drivers/nespad`) | [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) | shuichitakano, fhoedemakers — MIT |
+| NES/SNES gamepad PIO reader (`drivers/nespad`) | [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) | shuichitakano, fhoedemakers (MIT) |
 | SD CID/CSD decode and manufacturer table (`tests/tests_sd.c`) | SpeccyP, `drivers/pico_fatfs/tf_card.c` | DnCraptor and contributors |
-| FatFs (`drivers/fatfs`) | [elm-chan.org](http://elm-chan.org/fsw/ff/) | ChaN — BSD-style |
+| FatFs (`drivers/fatfs`) | [elm-chan.org](http://elm-chan.org/fsw/ff/) | ChaN (BSD-style) |
 | I²S audio PIO (`drivers/audio_i2s.pio`) | Raspberry Pi Pico examples lineage | |
 | USB HID host, XInput (`drivers/usbhid`) | TinyUSB and contributors | |
 | HSTX VGA register configuration | DispHSTX | Miroslav Nemecek |
 | Adjacent-pin short scan | [murmulator-tester](https://github.com/DnCraptor/murmulator-tester) | DnCraptor |
 | TurboSound 74HC595 word format | SpeccyP, `aySoft.h` | DnCraptor |
 
-Two local edits were made to the vendored composite driver, both forced by this
-firmware's resource layout rather than by preference:
+The vendored composite driver needed two edits, both because of how this firmware
+allocates its hardware rather than out of preference:
 
-- `PIO_VIDEO` selects **pio2**. pio0 carries the inter-processor link and pio1
-  the I²S audio.
-- The DMA request line comes from `pio_get_dreq()` instead of a hardcoded
-  `DREQ_PIO1_TX0`, which predates the RP2350's third PIO and silently hands pio2
-  the pio1 request.
+- `PIO_VIDEO` selects pio2. pio0 carries the inter-processor link and pio1 the
+  I²S audio.
+- The DMA request line now comes from `pio_get_dreq()` rather than a hardcoded
+  `DREQ_PIO1_TX0`. That constant predates the RP2350's third PIO and silently
+  hands pio2 the pio1 request line.
 
-A third change publishes the encoder's emitted-frame count, so *Video output* has
-something honest to measure.
+A third change publishes the encoder's emitted-frame count, which gives *Video
+output* something honest to measure.
 
 ---
 
@@ -418,4 +419,4 @@ something honest to measure.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Copyright © 2026 Mikhail Matveev — <https://rh1.tech>
+Copyright © 2026 Mikhail Matveev, <https://rh1.tech>
