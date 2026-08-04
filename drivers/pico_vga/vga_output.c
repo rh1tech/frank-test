@@ -204,7 +204,15 @@ void vga_output_set_vsync_callback(vga_vsync_cb_t cb)       { vsync_callback = c
 #define SEL_SAME(b) ((uint32_t)(b) << HSTX_CTRL_BIT0_SEL_P_LSB | \
                      (uint32_t)(b) << HSTX_CTRL_BIT0_SEL_N_LSB)
 
-void vga_output_core1_run(void) {
+/* Runs from RAM, and so does everything it calls.
+ *
+ * Core 1 spins here for the life of the picture, and the scanline
+ * interrupt returns into this loop. Left in flash, those fetches go
+ * through XIP - which core 0 saturates the moment it repaints, because
+ * every glyph and icon it draws is a flash read. The interrupt itself is
+ * already in RAM; the code it returns to was not, so a repaint could
+ * stall the scanout even though the handler was fast. */
+void __not_in_flash_func(vga_output_core1_run)(void) {
     /* N_SHIFTS 1, not 5.
      *
      * This field is how many *output* words the command expander makes

@@ -308,7 +308,11 @@ static void __not_in_flash_func(tv_blit)(void) {
     }
 }
 
-static void tv_core1_run(void) {
+/* From RAM, for the reason in drivers/pico_vga/vga_output.c: core 0
+ * saturates XIP whenever it repaints, and a scanout loop living in flash
+ * stalls with it. Composite is analogue and drops sync for it, exactly
+ * as VGA did. */
+static void __not_in_flash_func(tv_core1_run)(void) {
     /* Claims its PIO state machine, three DMA channels and the alarm.
      * Must run on core 1: the scanline work is time-critical and core 0
      * is running the interface. */
