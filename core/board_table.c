@@ -224,6 +224,7 @@ const frank_board_desc_t frank_board_table[] = {
      * what FRANK_MCU_ANY is for. */
     .mcu = FRANK_MCU_ANY,
     .role = FRANK_ROLE_SINGLE,
+    .pico_socket = true,
     .caps = CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE
           | CAP_AUDIO_I2S | CAP_AUDIO_AMP | CAP_AUDIO_MUX
           | CAP_SD | CAP_PS2 | CAP_GAMEPAD_NES

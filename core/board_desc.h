@@ -151,6 +151,18 @@ typedef struct {
     frank_mcu_class_t  mcu;
     frank_role_t       role;
     frank_caps_t       caps;
+
+    /* True only when the MCU arrives on a Pico-form-factor module, whose
+     * header breaks out GP0-GP22 and GP26-GP28 and nothing else: GP23 is
+     * the module's SMPS power-save control, GP24 its VBUS sense, GP25 its
+     * LED, and GP29 upward never leave the module.
+     *
+     * Not the same question as "is the flash on the module", which is
+     * what this was first inferred from and is wrong: a PGA2350 carries
+     * its own flash too and exposes all 48 GPIOs. FRANK PGA, MegaFRANK
+     * and OldSkoolFRANK all use pins above GP28, so of the socketed
+     * boards only FRANK is one of these. */
+    bool               pico_socket;
     frank_pins_t       pins;
 
     /* Tier 2 fingerprint: the pins whose passive state distinguishes

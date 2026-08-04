@@ -208,13 +208,12 @@ static pinmask_t claimed_pins(const frank_board_desc_t *b) {
     claim(&m, p->link_fs);      claim(&m, p->link_db_out);
     claim(&m, p->link_db_in);
 
-    /* Four boards socket a Pico-form-factor module, which the descriptor
-     * already records by leaving flash_bytes at zero: the flash is on the
-     * module. There the header breaks out GP0-GP22 and GP26-GP28 only.
-     * GP23 is the SMPS power-save control, GP24 its VBUS sense, GP25 its
-     * LED, and nothing at GP29 or above leaves the module. Driving the
-     * SMPS mode pin to discover that is a bad idea on its own merits. */
-    if (b->flash_bytes == 0) {
+    /* A Pico-form-factor socket breaks out GP0-GP22 and GP26-GP28 only,
+     * and driving GP23 — the module's SMPS mode pin — to discover that is
+     * a bad idea on its own merits. Read from the descriptor rather than
+     * inferred from flash_bytes, which was the first attempt and was
+     * wrong: a PGA2350 carries its own flash too and exposes all 48. */
+    if (b->pico_socket) {
         claim_run(&m, 23, 3);
         for (int i = 29; i < 48; i++) claim(&m, i);
     }

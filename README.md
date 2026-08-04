@@ -90,7 +90,8 @@ GPIO the package does not have.
 |---|---|
 | miniFRANK, microFRANK, zeroFRANK | `rp2350a` |
 | MegaFRANK, Nyx, OldSkoolFRANK, FRANK Next | `rp2350b` |
-| FRANK, FRANK PGA | whichever module is in the socket: a Pico 2 is `rp2350a`, a Pico Plus 2 is `rp2350b` |
+| FRANK PGA | `rp2350b` — a PGA2350 is always the B package |
+| FRANK | whichever module is in the socket: a Pico 2 is `rp2350a`, a Pico Plus 2 is `rp2350b` |
 | FRANK Core 2, Core 2U — master | `rp2350b` |
 | FRANK Core 2, Core 2U — slave | `slave` |
 
