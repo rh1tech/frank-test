@@ -1,0 +1,87 @@
+#
+# FRANK universal test firmware
+#
+# Copyright (c) 2026 Mikhail Matveev <xtreme@rh1.tech>
+# https://github.com/rh1tech/frank-test
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  attribution:
+    name: Attribution
+    # Cheap and first: a commit crediting an AI must never reach main, and finding out at
+    # merge time is finding out too late. A local hook cannot do this job — it protects
+    # only whoever installed it, and never runs for a commit authored through GitHub's own
+    # web surface. This is the enforcement that actually applies to everyone.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history on a PR so every commit in the branch is inspected, not just the tip.
+          fetch-depth: 0
+
+      - name: Reject AI attribution in commit messages
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          # An empty or all-zero BASE means there is no predecessor to diff against (first
+          # push to a branch, or a forced update). Fall back to the tip commit alone rather
+          # than re-scanning history that was already accepted.
+          if [ -z "${BASE}" ] || [ "${BASE}" = "0000000000000000000000000000000000000000" ]; then
+            range="${HEAD_SHA} -1"
+          else
+            range="${BASE}..${HEAD_SHA}"
+          fi
+          echo "Inspecting: ${range}"
+          # shellcheck disable=SC2086
+          offenders=$(git log --format='%H%x09%an <%ae>%x09%s%n%b' ${range} \
+            | grep -inE 'co-authored-by:.*(copilot|claude|chatgpt|gpt-|anthropic|openai|codex|cursor|devin|gemini|bard)|generated with \[?(claude|copilot|chatgpt)|assisted-by:|claude-session' || true)
+          if [ -n "${offenders}" ]; then
+            echo "::error::Commit messages credit an AI. Remove the trailer and amend/rebase."
+            echo "${offenders}"
+            exit 1
+          fi
+          # Authorship, not just trailers: a commit written BY a bot account counts too.
+          # shellcheck disable=SC2086
+          bots=$(git log --format='%H %an <%ae>' ${range} \
+            | grep -iE 'copilot|claude|chatgpt|anthropic|openai\[bot\]' || true)
+          if [ -n "${bots}" ]; then
+            echo "::error::Commits authored by an AI account."
+            echo "${bots}"
+            exit 1
+          fi
+
+  build:
+    name: Build
+    needs: attribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Arm toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential
+
+      - name: Fetch the Pico SDK
+        run: |
+          git clone --depth 1 --branch 2.2.0 https://github.com/raspberrypi/pico-sdk.git "$HOME/pico-sdk"
+          git -C "$HOME/pico-sdk" submodule update --init --depth 1 lib/tinyusb
+
+      # One board per MCU class is enough to catch the mistakes CI can catch: a
+      # header that only compiles for one pin map, or a descriptor that names a
+      # field the struct no longer has.
+      - name: Build
+        env:
+          PICO_SDK_PATH: /home/runner/pico-sdk
+        run: |
+          cmake -S app -B app/build -DPICO_BOARD=frank_core2_master
+          cmake --build app/build -j"$(nproc)"

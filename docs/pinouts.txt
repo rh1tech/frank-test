@@ -1,0 +1,614 @@
+==============================================================================
+FRANK
+
+--- U6 Rasberry Pi Pico 1/2  (/Pico/)
+  GPIO0   /PGPIO0                            -> U4[TXS0104EDR].A3_4, R1[10K].pin1, J19[PWR].Pin_1_1, U12[RP2040-Zero].15_16
+  GPIO1   /PGPIO1                            -> U4[TXS0104EDR].A4_5, R2[10K].pin1, J19[PWR].Pin_3_3, U12[RP2040-Zero].14_15
+  GPIO2   /PGPIO2                            -> R3[10K].pin1, U4[TXS0104EDR].A1_2, U12[RP2040-Zero].12_13
+  GPIO3   /PGPIO3                            -> R4[10K].pin1, U4[TXS0104EDR].A2_3, U12[RP2040-Zero].11_12
+  GPIO4   /PGPIO4                            -> J16[104031-0811].DAT0_7
+  GPIO5   /PGPIO5                            -> J16[104031-0811].DAT3/CD_2
+  GPIO6   /PGPIO6                            -> J16[104031-0811].CLK_5
+  GPIO7   /PGPIO7                            -> J16[104031-0811].CMD_3
+  GPIO8   /Pico/GPIO8                        -> 
+  GPIO9   /PGPIO9                            -> R43[2K].pin1, R44[2K].pin1, U8[TDA1387T].DATA_3
+  GPIO10  /PGPIO10                           -> U8[TDA1387T].SCLK_1, R46[1K].pin2
+  GPIO11  /PGPIO11                           -> U8[TDA1387T].LRCK_2, R45[1K].pin2
+  GPIO12  /PGPIO12                           -> J9[Pin Header 1x08].Pin_3_3, R16[270R].pin2, R28[270R].pin1, R78[1K].pin1
+  GPIO13  /PGPIO13                           -> R20[270R].pin2, R27[270R].pin1, R75[330R].pin1
+  GPIO14  /PGPIO14                           -> J9[Pin Header 1x08].Pin_4_4, R14[270R].pin2, R24[270R].pin1, R77[1K].pin1
+  GPIO15  /PGPIO15                           -> J9[Pin Header 1x08].Pin_8_8, R17[270R].pin2, R23[270R].pin1, R74[330R].pin1
+  GPIO16  /PGPIO16                           -> J9[Pin Header 1x08].Pin_5_5, R18[270R].pin2, R26[270R].pin1, R76[1K].pin1
+  GPIO17  /PGPIO17                           -> R21[270R].pin2, R25[270R].pin1, R73[330R].pin1
+  GPIO18  /PGPIO18                           -> J9[Pin Header 1x08].Pin_6_6, R15[270R].pin2, R22[750R].pin1, R79[100R].pin2
+  GPIO19  /PGPIO19                           -> J9[Pin Header 1x08].Pin_7_7, R19[270R].pin2, R80[100R].pin2
+  GPIO20  /PGPIO20                           -> U1[ESP-01v090].URXD_8, J14[GP2].4_4, J15[GP2].4_4
+  GPIO21  /PGPIO21                           -> U1[ESP-01v090].UTXD_1, J14[GP2].3_3, J15[GP2].3_3
+  GPIO22  /PGPIO22                           -> JP1[Config Switches].pin7
+  GPIO26  /Gamepad 1/DATA                    -> D3[3V3].K_1, R67[1K].pin1
+  GPIO27  /Gamepad 2/DATA                    -> D4[3V3].K_1, R68[1K].pin1
+  GPIO28  /Pico/GPIO28                       -> 
+
+--- U12 RP2040-Zero  (/Zero/)
+==============================================================================
+FRANK_CORE2
+
+--- U3 RP2350B  (/RP2350B/)
+  GPIO0   Net-(J2-Pin_1)                     -> J2[UART].Pin_1_1
+  GPIO1   Net-(J2-Pin_3)                     -> J2[UART].Pin_3_3
+  GPIO2   /RP2350B/GPIO2                     -> 
+  GPIO3   /RP2350B/GPIO3                     -> 
+  GPIO4   /SD/DAT0/GPIO4                     -> J7[104031-0811].DAT0_7
+  GPIO5   /SD/CDDAT3/GPIO5                   -> J7[104031-0811].DAT3/CD_2
+  GPIO6   /SD/CLK/GPIO6                      -> J7[104031-0811].CLK_5
+  GPIO7   /SD/CMD/GPIO7                      -> J7[104031-0811].CMD_3
+  GPIO8   /RP2350B/GPIO8                     -> 
+  GPIO9   /TDA/DATA/GPIO9                    -> U8[TDA1387T].DATA_3
+  GPIO10  /TDA/SCLK/GPIO10                   -> U8[TDA1387T].SCLK_1
+  GPIO11  /TDA/LRCK/GPIO11                   -> U8[TDA1387T].LRCK_2
+  GPIO12  /HDMI/CLKN/GPIO12                  -> RN1[270R].R4.1_4
+  GPIO13  /HDMI/CLKP/GPIO13                  -> RN1[270R].R3.1_3
+  GPIO14  /HDMI/D0N/GPIO14                   -> RN1[270R].R2.1_2
+  GPIO15  /HDMI/D0P/GPIO15                   -> RN1[270R].R1.1_1
+  GPIO16  /HDMI/D1N/GPIO16                   -> RN2[270R].R4.1_4
+  GPIO17  /HDMI/D1P/GPIO17                   -> RN2[270R].R3.1_3
+  GPIO18  /HDMI/D2N/GPIO18                   -> RN2[270R].R2.1_2
+  GPIO19  /HDMI/D2P/GPIO19                   -> RN2[270R].R1.1_1
+  GPIO20  /RP2350/20B/1A/D0                  -> U6[RP2350].GPIO1_3
+  GPIO21  /RP2350/21B/2A/D1                  -> U6[RP2350].GPIO2_4
+  GPIO22  /RP2350/22B/3A/D2                  -> U6[RP2350].GPIO3_5
+  GPIO23  /RP2350/23B/4A/D3                  -> U6[RP2350].GPIO4_7
+  GPIO24  /RP2350/24B/5A/D4                  -> U6[RP2350].GPIO5_8
+  GPIO25  /RP2350/25B/6A/D5                  -> U6[RP2350].GPIO6_9
+  GPIO26  /RP2350/26B/7A/D6                  -> U6[RP2350].GPIO7_10
+  GPIO27  /RP2350/27B/8A/D7                  -> U6[RP2350].GPIO8_12
+  GPIO28  /RP2350B/GPIO28                    -> R1[33R].pin2
+  GPIO29  /RP2350/29B/10A/VALID              -> U6[RP2350].GPIO10_14
+  GPIO30  /RP2350/30B/11A/D0                 -> U6[RP2350].GPIO11_15
+  GPIO31  /RP2350/31B/12A/D1                 -> U6[RP2350].GPIO12_16
+  GPIO32  /RP2350/32B/13A/D2                 -> U6[RP2350].GPIO13_17
+  GPIO33  /RP2350/33B/14A/D3                 -> U6[RP2350].GPIO14_18
+  GPIO34  /RP2350/34B/15A/D4                 -> U6[RP2350].GPIO15_19
+  GPIO35  /RP2350/35B/16A/D5                 -> U6[RP2350].GPIO16_27
+  GPIO36  /RP2350/36B/17A/D6                 -> U6[RP2350].GPIO17_28
+  GPIO37  /RP2350/37B/18A/D7                 -> U6[RP2350].GPIO18_29
+  GPIO38  /RP2350/38B/19A/CLK                -> R2[33R].pin2
+  GPIO39  /RP2350/39B/20A/VALID              -> U6[RP2350].GPIO20_32
+  GPIO40  /RP2350/40B/21A/FS                 -> U6[RP2350].GPIO21_33
+  GPIO41  /RP2350/41B/22A/DB_MS              -> U6[RP2350].GPIO22_34
+  GPIO42  /RP2350/42B/23A/DB_SM              -> U6[RP2350].GPIO23_35
+  GPIO43  /RP2350/43B/RUNA/SR                -> U6[RP2350].RUN_26, R3[10K].pin1, S4[RP Reset].1_1, S4[RP Reset].3_3
+  GPIO44  /RP2350B/GPIO44                    -> 
+  GPIO45  /RP2350B/GPIO45                    -> 
+  GPIO46  Net-(U3-GPIO46_ADC6)               -> R11[330R].pin2
+  GPIO47  /RP2350B/GPIO47                    -> R5[10K].pin1, U2[ESP-PSRAM64H].~{CE}_1
+
+--- U6 RP2350  (/RP2350A/)
+  GPIO0   /RP2350A/GPIO0                     -> R13[10K].pin1, U5[ESP-PSRAM64H].~{CE}_1
+  GPIO1   /RP2350/20B/1A/D0                  -> U3[RP2350B].GPIO20_20
+  GPIO2   /RP2350/21B/2A/D1                  -> U3[RP2350B].GPIO21_21
+  GPIO3   /RP2350/22B/3A/D2                  -> U3[RP2350B].GPIO22_22
+  GPIO4   /RP2350/23B/4A/D3                  -> U3[RP2350B].GPIO23_23
+  GPIO5   /RP2350/24B/5A/D4                  -> U3[RP2350B].GPIO24_25
+  GPIO6   /RP2350/25B/6A/D5                  -> U3[RP2350B].GPIO25_26
+  GPIO7   /RP2350/26B/7A/D6                  -> U3[RP2350B].GPIO26_27
+  GPIO8   /RP2350/27B/8A/D7                  -> U3[RP2350B].GPIO27_28
+  GPIO9   /RP2350/28B/9A/CLK                 -> R1[33R].pin1
+  GPIO10  /RP2350/29B/10A/VALID              -> U3[RP2350B].GPIO29_37
+  GPIO11  /RP2350/30B/11A/D0                 -> U3[RP2350B].GPIO30_38
+  GPIO12  /RP2350/31B/12A/D1                 -> U3[RP2350B].GPIO31_39
+  GPIO13  /RP2350/32B/13A/D2                 -> U3[RP2350B].GPIO32_40
+  GPIO14  /RP2350/33B/14A/D3                 -> U3[RP2350B].GPIO33_42
+  GPIO15  /RP2350/34B/15A/D4                 -> U3[RP2350B].GPIO34_43
+  GPIO16  /RP2350/35B/16A/D5                 -> U3[RP2350B].GPIO35_44
+  GPIO17  /RP2350/36B/17A/D6                 -> U3[RP2350B].GPIO36_45
+  GPIO18  /RP2350/37B/18A/D7                 -> U3[RP2350B].GPIO37_46
+  GPIO19  /RP2350A/GPIO19                    -> R2[33R].pin1
+  GPIO20  /RP2350/39B/20A/VALID              -> U3[RP2350B].GPIO39_48
+  GPIO21  /RP2350/40B/21A/FS                 -> U3[RP2350B].GPIO40_ADC0_49
+  GPIO22  /RP2350/41B/22A/DB_MS              -> U3[RP2350B].GPIO41_ADC1_52
+  GPIO23  /RP2350/42B/23A/DB_SM              -> U3[RP2350B].GPIO42_ADC2_53
+  GPIO24  Net-(J4-Pin_1)                     -> J4[UART].Pin_1_1
+  GPIO25  Net-(J4-Pin_3)                     -> J4[UART].Pin_3_3
+  GPIO26  Net-(U6-GPIO26_ADC0)               -> R19[1K].pin2
+  GPIO27  /RP2350A/GPIO27                    -> 
+  GPIO28  /RP2350A/GPIO28                    -> 
+  GPIO29  /RP2350A/GPIO29                    -> 
+==============================================================================
+FRANK_CORE2U
+
+--- U3 RP2350B  (/RP2350B/)
+  GPIO0   Net-(J2-Pin_1)                     -> J2[UART].Pin_1_1
+  GPIO1   Net-(J2-Pin_3)                     -> J2[UART].Pin_3_3
+  GPIO2   /RP2350B/GPIO2                     -> 
+  GPIO3   /RP2350B/GPIO3                     -> 
+  GPIO4   /SD/DAT0/GPIO4                     -> J7[104031-0811].DAT0_7
+  GPIO5   /SD/CDDAT3/GPIO5                   -> J7[104031-0811].DAT3/CD_2
+  GPIO6   /SD/CLK/GPIO6                      -> J7[104031-0811].CLK_5
+  GPIO7   /SD/CMD/GPIO7                      -> J7[104031-0811].CMD_3
+  GPIO8   /RP2350B/GPIO8                     -> 
+  GPIO9   /TDA/DATA/GPIO9                    -> U8[TDA1387T].DATA_3
+  GPIO10  /TDA/SCLK/GPIO10                   -> U8[TDA1387T].SCLK_1
+  GPIO11  /TDA/LRCK/GPIO11                   -> U8[TDA1387T].LRCK_2
+  GPIO12  /HDMI/CLKN/GPIO12                  -> RN1[270R].R4.1_4
+  GPIO13  /HDMI/CLKP/GPIO13                  -> RN1[270R].R3.1_3
+  GPIO14  /HDMI/D0N/GPIO14                   -> RN1[270R].R2.1_2
+  GPIO15  /HDMI/D0P/GPIO15                   -> RN1[270R].R1.1_1
+  GPIO16  /HDMI/D1N/GPIO16                   -> RN2[270R].R4.1_4
+  GPIO17  /HDMI/D1P/GPIO17                   -> RN2[270R].R3.1_3
+  GPIO18  /HDMI/D2N/GPIO18                   -> RN2[270R].R2.1_2
+  GPIO19  /HDMI/D2P/GPIO19                   -> RN2[270R].R1.1_1
+  GPIO20  /RP2350/20B/1A/D0                  -> U6[RP2350].GPIO1_3
+  GPIO21  /RP2350/21B/2A/D1                  -> U6[RP2350].GPIO2_4
+  GPIO22  /RP2350/22B/3A/D2                  -> U6[RP2350].GPIO3_5
+  GPIO23  /RP2350/23B/4A/D3                  -> U6[RP2350].GPIO4_7
+  GPIO24  /RP2350/24B/5A/D4                  -> U6[RP2350].GPIO5_8
+  GPIO25  /RP2350/25B/6A/D5                  -> U6[RP2350].GPIO6_9
+  GPIO26  /RP2350/26B/7A/D6                  -> U6[RP2350].GPIO7_10
+  GPIO27  /RP2350/27B/8A/D7                  -> U6[RP2350].GPIO8_12
+  GPIO28  /RP2350B/GPIO28                    -> R1[33R].pin2
+  GPIO29  /RP2350/29B/10A/VALID              -> U6[RP2350].GPIO10_14
+  GPIO30  /RP2350/30B/11A/D0                 -> U6[RP2350].GPIO11_15
+  GPIO31  /RP2350/31B/12A/D1                 -> U6[RP2350].GPIO12_16
+  GPIO32  /RP2350/32B/13A/D2                 -> U6[RP2350].GPIO13_17
+  GPIO33  /RP2350/33B/14A/D3                 -> U6[RP2350].GPIO14_18
+  GPIO34  /RP2350/34B/15A/D4                 -> U6[RP2350].GPIO15_19
+  GPIO35  /RP2350/35B/16A/D5                 -> U6[RP2350].GPIO16_27
+  GPIO36  /RP2350/36B/17A/D6                 -> U6[RP2350].GPIO17_28
+  GPIO37  /RP2350/37B/18A/D7                 -> U6[RP2350].GPIO18_29
+  GPIO38  /RP2350/38B/19A/CLK                -> R2[33R].pin2
+  GPIO39  /RP2350/39B/20A/VALID              -> U6[RP2350].GPIO20_32
+  GPIO40  /RP2350/40B/21A/FS                 -> U6[RP2350].GPIO21_33
+  GPIO41  /RP2350/41B/22A/DB_MS              -> U6[RP2350].GPIO22_34
+  GPIO42  /RP2350/42B/23A/DB_SM              -> U6[RP2350].GPIO23_35
+  GPIO43  /RP2350/43B/RUNA/SR                -> U6[RP2350].RUN_26, R3[10K].pin1, S4[RP Reset].1_1, S4[RP Reset].3_3
+  GPIO44  /RP2350B/GPIO44                    -> 
+  GPIO45  /RP2350B/GPIO45                    -> U13[CD4069UBM].I=*C_6
+  GPIO46  Net-(U3-GPIO46_ADC6)               -> R11[330R].pin2
+  GPIO47  /RP2350B/GPIO47                    -> R5[10K].pin1, U2[ESP-PSRAM64H].~{CE}_1
+
+--- U6 RP2350  (/RP2350A/)
+  GPIO0   /RP2350A/GPIO0                     -> R13[10K].pin1, U5[ESP-PSRAM64H].~{CE}_1
+  GPIO1   /RP2350/20B/1A/D0                  -> U3[RP2350B].GPIO20_20
+  GPIO2   /RP2350/21B/2A/D1                  -> U3[RP2350B].GPIO21_21
+  GPIO3   /RP2350/22B/3A/D2                  -> U3[RP2350B].GPIO22_22
+  GPIO4   /RP2350/23B/4A/D3                  -> U3[RP2350B].GPIO23_23
+  GPIO5   /RP2350/24B/5A/D4                  -> U3[RP2350B].GPIO24_25
+  GPIO6   /RP2350/25B/6A/D5                  -> U3[RP2350B].GPIO25_26
+  GPIO7   /RP2350/26B/7A/D6                  -> U3[RP2350B].GPIO26_27
+  GPIO8   /RP2350/27B/8A/D7                  -> U3[RP2350B].GPIO27_28
+  GPIO9   /RP2350/28B/9A/CLK                 -> R1[33R].pin1
+  GPIO10  /RP2350/29B/10A/VALID              -> U3[RP2350B].GPIO29_37
+  GPIO11  /RP2350/30B/11A/D0                 -> U3[RP2350B].GPIO30_38
+  GPIO12  /RP2350/31B/12A/D1                 -> U3[RP2350B].GPIO31_39
+  GPIO13  /RP2350/32B/13A/D2                 -> U3[RP2350B].GPIO32_40
+  GPIO14  /RP2350/33B/14A/D3                 -> U3[RP2350B].GPIO33_42
+  GPIO15  /RP2350/34B/15A/D4                 -> U3[RP2350B].GPIO34_43
+  GPIO16  /RP2350/35B/16A/D5                 -> U3[RP2350B].GPIO35_44
+  GPIO17  /RP2350/36B/17A/D6                 -> U3[RP2350B].GPIO36_45
+  GPIO18  /RP2350/37B/18A/D7                 -> U3[RP2350B].GPIO37_46
+  GPIO19  /RP2350A/GPIO19                    -> R2[33R].pin1
+  GPIO20  /RP2350/39B/20A/VALID              -> U3[RP2350B].GPIO39_48
+  GPIO21  /RP2350/40B/21A/FS                 -> U3[RP2350B].GPIO40_ADC0_49
+  GPIO22  /RP2350/41B/22A/DB_MS              -> U3[RP2350B].GPIO41_ADC1_52
+  GPIO23  /RP2350/42B/23A/DB_SM              -> U3[RP2350B].GPIO42_ADC2_53
+  GPIO24  Net-(J4-Pin_1)                     -> J4[UART].Pin_1_1
+  GPIO25  Net-(J4-Pin_3)                     -> J4[UART].Pin_3_3
+  GPIO26  Net-(U6-GPIO26_ADC0)               -> R19[1K].pin2
+  GPIO27  /RP2350A/GPIO27                    -> 
+  GPIO28  /RP2350A/GPIO28                    -> 
+  GPIO29  /RP2350A/GPIO29                    -> 
+==============================================================================
+FRANK_NEXT
+
+--- U3 RP2350B  (/RP2350B/)
+  GPIO0   /GPIO0/RXD                         -> U18[74HC4052BQ].2Y1_5
+  GPIO1   /GPIO1/TXD                         -> U18[74HC4052BQ].1Y1_14
+  GPIO2   /GPIO2/CLK                         -> J4[104031-0811].CLK_5
+  GPIO3   /GPIO3/CMD                         -> J4[104031-0811].CMD_3, R11[10K].pin2
+  GPIO4   /GPIO4/DAT0                        -> J4[104031-0811].DAT0_7, R12[10K].pin2
+  GPIO5   /GPIO5/DAT1                        -> J4[104031-0811].DAT1_8, R13[10K].pin2
+  GPIO6   /GPIO6/DAT2                        -> J4[104031-0811].DAT2_1, R9[10K].pin2
+  GPIO7   /GPIO7/DAT3                        -> J4[104031-0811].DAT3/CD_2, R10[10K].pin2
+  GPIO8   /RP2350B/GPIO8                     -> 
+  GPIO9   /GPIO9/BCLK                        -> U4[TLV320DAC3100IRHBR].BCLK_7
+  GPIO10  /GPIO10/WCLK                       -> U4[TLV320DAC3100IRHBR].WCLK_6
+  GPIO11  /GPIO11/DIN                        -> U4[TLV320DAC3100IRHBR].DIN_5
+  GPIO12  /GPIO12/CLKN                       -> RN1[270R].R4.1_4
+  GPIO13  /GPIO13/CLKP                       -> RN1[270R].R3.1_3
+  GPIO14  /GPIO14/D0N                        -> RN1[270R].R2.1_2
+  GPIO15  /GPIO15/D0P                        -> RN1[270R].R1.1_1
+  GPIO16  /GPIO16/D1N                        -> RN2[270R].R4.1_4
+  GPIO17  /GPIO17/D1P                        -> RN2[270R].R3.1_3
+  GPIO18  /GPIO18/D2N                        -> RN2[270R].R2.1_2
+  GPIO19  /GPIO19/D2P                        -> RN2[270R].R1.1_1
+  GPIO20  /GPIO20                            -> J7[NES Gamepad 1/2].Pin_4_4
+  GPIO21  /GPIO21                            -> J7[NES Gamepad 1/2].Pin_3_3
+  GPIO22  /GPIO22/LOAD_IN                    -> U21[CD4069UBM].I=*C_6
+  GPIO23  /GPIO23/DATA                       -> R38[4.7K].pin2, U20[DS2401P+].DATA_2
+  GPIO24  /GPIO24/MCLK                       -> U4[TLV320DAC3100IRHBR].MCLK_8
+  GPIO25  Net-(U3-GPIO25)                    -> R8[330R].pin2
+  GPIO26  /GPIO26                            -> D4[3V3].K_1, R27[1K].pin1
+  GPIO27  /GPIO27                            -> D3[3V3].K_1, R26[1K].pin1
+  GPIO28  /GPIO28/SDA                        -> U4[TLV320DAC3100IRHBR].SDA_9, R15[4.7K].pin1, U19[DS3231MZ].SDA_7
+  GPIO29  /GPIO29/SCL                        -> U4[TLV320DAC3100IRHBR].SCL_10, R14[4.7K].pin1, U19[DS3231MZ].SCL_8
+  GPIO30  /GPIO30/S0                         -> JP2[ESP Debug].B_2, U18[74HC4052BQ].S0_10, R37[10K].pin1
+  GPIO31  /RP2350B/GPIO31                    -> 
+  GPIO32  /MISO (GPIO32/GPIO19)              -> U6[ESP32-D0WD-V3].GPIO19_38
+  GPIO33  /CS (GPIO33/GPIO5)                 -> U6[ESP32-D0WD-V3].GPIO5_34
+  GPIO34  /SCK (GPIO34/GPIO18)               -> U6[ESP32-D0WD-V3].GPIO18_35
+  GPIO35  /MOSI (GPIO35/GPIO23)              -> U6[ESP32-D0WD-V3].GPIO23_36
+  GPIO36  /HS (GPIO36/GPIO2)                 -> U6[ESP32-D0WD-V3].GPIO2_22
+  GPIO37  /READY (GPIO37/GPIO4)              -> U6[ESP32-D0WD-V3].GPIO4_24
+  GPIO38  /GPIO38/CHIP_PU                    -> U6[ESP32-D0WD-V3].CHIP_PU_9, R19[10K].pin1, Q1[UMH3N].C1_6, C43[1nF].pin1, S4[ESP Reset].1_1, S4[ESP Reset].3_3
+  GPIO39  /GPIO39/GPIO0                      -> U6[ESP32-D0WD-V3].GPIO0_23, R23[10K].pin1, Q1[UMH3N].C2_3, C44[1nF].pin1, S3[ESP Flash].1_1, S3[ESP Flash].3_3
+  GPIO40  /RP2350B/GPIO40/UART_1             -> J2[UART].Pin_1_1
+  GPIO41  /RP2350B/GPIO41/UART_3             -> J2[UART].Pin_3_3
+  GPIO42  /RP2350B/GPIO42                    -> 
+  GPIO43  /RP2350B/GPIO43                    -> 
+  GPIO44  /RP2350B/GPIO44                    -> 
+  GPIO45  /RP2350B/GPIO45                    -> 
+  GPIO46  /RP2350B/GPIO46                    -> 
+  GPIO47  /RP2350B/GPIO47                    -> R2[10K].pin1, U2[ESP-PSRAM64H].~{CE}_1
+
+--- U6 ESP32-D0WD-V3  (/ESP32/)
+  GPIO0   /GPIO39/GPIO0                      -> U3[RP2350B].GPIO39_48, R23[10K].pin1, Q1[UMH3N].C2_3, C44[1nF].pin1, S3[ESP Flash].1_1, S3[ESP Flash].3_3
+  GPIO2   /HS (GPIO36/GPIO2)                 -> U3[RP2350B].GPIO36_45
+  GPIO4   /READY (GPIO37/GPIO4)              -> U3[RP2350B].GPIO37_46
+  GPIO5   /CS (GPIO33/GPIO5)                 -> U3[RP2350B].GPIO33_42
+  GPIO16  Net-(U6-GPIO16)                    -> R18[0R].pin1
+  GPIO17  /ESP32/GPIO17                      -> 
+  GPIO18  /SCK (GPIO34/GPIO18)               -> U3[RP2350B].GPIO34_43
+  GPIO19  /MISO (GPIO32/GPIO19)              -> U3[RP2350B].GPIO32_40
+  GPIO21  /ESP32/GPIO21                      -> 
+  GPIO22  /ESP32/GPIO22                      -> 
+  GPIO23  /MOSI (GPIO35/GPIO23)              -> U3[RP2350B].GPIO35_44
+  GPIO25  /ESP32/GPIO25                      -> 
+  GPIO26  /ESP32/GPIO26                      -> 
+  GPIO27  /ESP32/GPIO27                      -> 
+==============================================================================
+FRANK_PGA
+
+--- U6 Pimoroni PGA2350  (/PGA2350/)
+  GPIO0   /PGPIO0                            -> U4[TXS0104EDR].A3_4, R1[10K].pin1, J1[UART].Pin_1_1
+  GPIO1   /PGPIO1                            -> U4[TXS0104EDR].A4_5, R2[10K].pin1, J1[UART].Pin_3_3
+  GPIO2   /PGPIO2                            -> R3[10K].pin1, U4[TXS0104EDR].A1_2
+  GPIO3   /PGPIO3                            -> R4[10K].pin1, U4[TXS0104EDR].A2_3
+  GPIO4   /PGPIO4                            -> J16[104031-0811].DAT0_7
+  GPIO5   /PGPIO5                            -> J16[104031-0811].DAT3/CD_2
+  GPIO6   /PGPIO6                            -> J16[104031-0811].CLK_5
+  GPIO7   /PGPIO7                            -> J16[104031-0811].CMD_3
+  GPIO8   /PGA2350/GP8                       -> 
+  GPIO9   /PGPIO9                            -> U10[TDA1387T].DATA_3, R48[2K].pin1, R49[2K].pin1
+  GPIO10  /PGPIO10                           -> U10[TDA1387T].SCLK_1, R51[1K].pin2
+  GPIO11  /PGPIO11                           -> U10[TDA1387T].LRCK_2, R50[1K].pin2
+  GPIO12  /PGPIO12                           -> J9[Pin Header 1x08].Pin_3_3, R19[270R].pin2, R33[270R].pin1, R83[1K].pin1
+  GPIO13  /PGPIO13                           -> R23[270R].pin2, R32[270R].pin1, R80[330R].pin1
+  GPIO14  /PGPIO14                           -> J9[Pin Header 1x08].Pin_4_4, R17[270R].pin2, R29[270R].pin1, R82[1K].pin1
+  GPIO15  /PGPIO15                           -> J9[Pin Header 1x08].Pin_8_8, R20[270R].pin2, R28[270R].pin1, R79[330R].pin1
+  GPIO16  /PGPIO16                           -> J9[Pin Header 1x08].Pin_5_5, R21[270R].pin2, R31[270R].pin1, R81[1K].pin1
+  GPIO17  /PGPIO17                           -> R24[270R].pin2, R30[270R].pin1, R78[330R].pin1
+  GPIO18  /PGPIO18                           -> J9[Pin Header 1x08].Pin_6_6, R18[270R].pin2, R27[750R].pin1, R84[100R].pin2
+  GPIO19  /PGPIO19                           -> J9[Pin Header 1x08].Pin_7_7, R22[270R].pin2, R85[100R].pin2
+  GPIO20  /PGPIO20                           -> J14[GP2].4_4, J15[GP2].4_4
+  GPIO21  /PGPIO21                           -> J14[GP2].3_3, J15[GP2].3_3
+  GPIO22  /PGPIO22                           -> U9[CD4069UBM].I=*C_6
+  GPIO23  /PGA2350/GP23                      -> 
+  GPIO24  /PGA2350/GP24                      -> 
+  GPIO25  GP25                               -> R25[1K].pin2
+  GPIO26  /PGPIO26                           -> D3[3V3].K_1, R72[1K].pin1
+  GPIO27  /PGPIO27                           -> D4[3V3].K_1, R73[1K].pin1
+  GPIO28  /PGA2350/GP28                      -> 
+  GPIO29  /PGA2350/GP29                      -> 
+  GPIO30  /PGA2350/GP30                      -> 
+  GPIO31  /PGA2350/GP31                      -> 
+  GPIO32  /PGA2350/GP32                      -> 
+  GPIO33  /PGA2350/GP33                      -> 
+  GPIO34  /PGA2350/GP34                      -> 
+  GPIO35  /PGA2350/GP35                      -> 
+  GPIO36  /PGA2350/GP36                      -> 
+  GPIO37  /PGA2350/GP37                      -> 
+  GPIO38  /PGPIO38                           -> U8[ESP-01v090].URXD_8
+  GPIO39  /PGPIO39                           -> U8[ESP-01v090].UTXD_1
+  GPIO40  /PGA2350/GP40                      -> 
+  GPIO41  /PGA2350/GP41                      -> 
+  GPIO42  /PGA2350/GP42                      -> 
+  GPIO43  /PGA2350/GP43                      -> 
+  GPIO44  /PGA2350/GP44                      -> 
+  GPIO45  /PGA2350/GP45                      -> 
+  GPIO46  /PGA2350/GP46                      -> 
+  GPIO47  /PGA2350/GP47                      -> 
+==============================================================================
+HECATE
+
+--- U2 RP2040  (/RP2040/)
+  GPIO0   /RP2040/GPIO0                      -> J1[UART].Pin_1_1
+  GPIO1   /RP2040/GPIO1                      -> J1[UART].Pin_3_3
+  GPIO2   /GPIO2                             -> R6[22R].pin1
+  GPIO3   /GPIO3                             -> R7[22R].pin1
+  GPIO4   /GPIO4                             -> R8[22R].pin1
+  GPIO5   /GPIO5                             -> R9[22R].pin1
+  GPIO6   /RP2040/GPIO6                      -> 
+  GPIO7   /RP2040/GPIO7                      -> 
+  GPIO8   /RP2040/GPIO8                      -> 
+  GPIO9   /RP2040/GPIO9                      -> 
+  GPIO10  /RP2040/GPIO10                     -> 
+  GPIO11  /GPIO11                            -> U1[TXS0104ERGYR].A2_3
+  GPIO12  /GPIO12                            -> U1[TXS0104ERGYR].A1_2
+  GPIO13  /RP2040/GPIO13                     -> 
+  GPIO14  /GPIO14                            -> U1[TXS0104ERGYR].A4_5
+  GPIO15  /GPIO15                            -> U1[TXS0104ERGYR].A3_4
+  GPIO16  /RP2040/GPIO16                     -> 
+  GPIO17  /RP2040/GPIO17                     -> 
+  GPIO18  /RP2040/GPIO18                     -> 
+  GPIO19  /RP2040/GPIO19                     -> 
+  GPIO20  /RP2040/GPIO20                     -> 
+  GPIO21  /RP2040/GPIO21                     -> 
+  GPIO22  /RP2040/GPIO22                     -> 
+  GPIO23  /RP2040/GPIO23                     -> 
+  GPIO24  /RP2040/GPIO24                     -> 
+  GPIO25  /RP2040/GPIO25                     -> R5[1K].pin2
+  GPIO26  /RP2040/GPIO26                     -> 
+  GPIO27  /RP2040/GPIO27                     -> 
+  GPIO28  /RP2040/GPIO28                     -> 
+  GPIO29  /RP2040/GPIO29                     -> 
+==============================================================================
+MEGAFRANK
+
+--- U14 Pimoroni PGA2350  (/PGA2350/)
+  GPIO0   /PGPIO0                            -> J4[Conn_02x20_Odd_Even].Pin_1_1, U4[TXS0104EDR].A3_4, R8[10K].pin1, J1[UART].Pin_1_1
+  GPIO1   /PGPIO1                            -> J4[Conn_02x20_Odd_Even].Pin_2_2, U4[TXS0104EDR].A4_5, R7[10K].pin1, J1[UART].Pin_3_3
+  GPIO2   /PGPIO2                            -> J4[Conn_02x20_Odd_Even].Pin_3_3, R3[10K].pin1, U4[TXS0104EDR].A1_2
+  GPIO3   /PGPIO3                            -> J4[Conn_02x20_Odd_Even].Pin_4_4, R4[10K].pin1, U4[TXS0104EDR].A2_3
+  GPIO4   /PGPIO4                            -> J18[104031-0811].DAT0_7, J4[Conn_02x20_Odd_Even].Pin_5_5
+  GPIO5   /PGPIO5                            -> J18[104031-0811].DAT3/CD_2, J4[Conn_02x20_Odd_Even].Pin_6_6
+  GPIO6   /PGPIO6                            -> J18[104031-0811].CLK_5, J4[Conn_02x20_Odd_Even].Pin_7_7
+  GPIO7   /PGPIO7                            -> J18[104031-0811].CMD_3, J4[Conn_02x20_Odd_Even].Pin_8_8
+  GPIO8   /PGPIO8                            -> J4[Conn_02x20_Odd_Even].Pin_9_9
+  GPIO9   /PGPIO9                            -> J4[Conn_02x20_Odd_Even].Pin_10_10, U18[TDA1387T].DATA_3, U9[74HC595].RCLK_12, U8[74HC595].RCLK_12, R94[2K].pin1, R95[2K].pin1
+  GPIO10  /PGPIO10                           -> J4[Conn_02x20_Odd_Even].Pin_11_11, U18[TDA1387T].SCLK_1, U9[74HC595].SRCLK_11, U8[74HC595].SRCLK_11, R97[1K].pin2
+  GPIO11  /PGPIO11                           -> J4[Conn_02x20_Odd_Even].Pin_12_12, U18[TDA1387T].LRCK_2, U8[74HC595].SER_14, R96[1K].pin2
+  GPIO12  /PGPIO12                           -> J11[Pin Header 1x08].Pin_3_3, R130[1K].pin1, R65[270R].pin2, R79[270R].pin1
+  GPIO13  /PGPIO13                           -> R127[330R].pin1, R69[270R].pin2, R78[270R].pin1
+  GPIO14  /PGPIO14                           -> J11[Pin Header 1x08].Pin_4_4, R129[1K].pin1, R63[270R].pin2, R75[270R].pin1
+  GPIO15  /PGPIO15                           -> J11[Pin Header 1x08].Pin_8_8, R126[330R].pin1, R66[270R].pin2, R74[270R].pin1
+  GPIO16  /PGPIO16                           -> J11[Pin Header 1x08].Pin_5_5, R128[1K].pin1, R67[270R].pin2, R77[270R].pin1
+  GPIO17  /PGPIO17                           -> R125[330R].pin1, R70[270R].pin2, R76[270R].pin1
+  GPIO18  /PGPIO18                           -> J11[Pin Header 1x08].Pin_6_6, R131[100R].pin2, R64[270R].pin2, R73[750R].pin1
+  GPIO19  /PGPIO19                           -> J11[Pin Header 1x08].Pin_7_7, R132[100R].pin2, R68[270R].pin2
+  GPIO20  /PGPIO20                           -> J4[Conn_02x20_Odd_Even].Pin_13_13, J16[GP2].4_4, J17[GP2].4_4
+  GPIO21  /PGPIO21                           -> J4[Conn_02x20_Odd_Even].Pin_14_14, J16[GP2].3_3, J17[GP2].3_3
+  GPIO22  /PGPIO22                           -> J4[Conn_02x20_Odd_Even].Pin_15_15, S1[DS01-254-S-06BE].3_3
+  GPIO23  /PGPIO23                           -> J4[Conn_02x20_Odd_Even].Pin_16_16, R1[1K].pin2
+  GPIO24  /PGPIO24                           -> J4[Conn_02x20_Odd_Even].Pin_17_17, R2[1K].pin2
+  GPIO25  GP25                               -> R71[1K].pin2
+  GPIO26  /PGPIO26                           -> J4[Conn_02x20_Odd_Even].Pin_19_19, D5[3V3].K_1, R119[1K].pin1
+  GPIO27  /PGPIO27                           -> J4[Conn_02x20_Odd_Even].Pin_18_18, D6[3V3].K_1, R120[1K].pin1
+  GPIO28  /PGPIO28                           -> J4[Conn_02x20_Odd_Even].Pin_21_21, R61[4.7K].pin1, U10[DS3231MZ].SDA_7
+  GPIO29  /PGPIO29                           -> J4[Conn_02x20_Odd_Even].Pin_20_20, R60[4.7K].pin1, U10[DS3231MZ].SCL_8
+  GPIO30  /PGPIO30                           -> J4[Conn_02x20_Odd_Even].Pin_23_23, R62[4.7K].pin2, U11[DS2401P+].DATA_2
+  GPIO31  /PGPIO31                           -> J4[Conn_02x20_Odd_Even].Pin_22_22, U12[ESP-PSRAM64].~{CE}_1
+  GPIO32  /PGPIO32                           -> J4[Conn_02x20_Odd_Even].Pin_25_25, U12[ESP-PSRAM64].SCLK_6
+  GPIO33  /PGPIO33                           -> J4[Conn_02x20_Odd_Even].Pin_24_24, U12[ESP-PSRAM64].SI/SIO_5
+  GPIO34  /PGPIO34                           -> J4[Conn_02x20_Odd_Even].Pin_27_27, S10[PSRAM On].B_2
+  GPIO35  /PGPIO35                           -> J4[Conn_02x20_Odd_Even].Pin_26_26
+  GPIO36  /PGPIO36                           -> J4[Conn_02x20_Odd_Even].Pin_29_29
+  GPIO37  /PGPIO37                           -> J4[Conn_02x20_Odd_Even].Pin_28_28
+  GPIO38  /PGPIO38                           -> J4[Conn_02x20_Odd_Even].Pin_31_31, U16[ESP-01v090].URXD_8
+  GPIO39  /PGPIO39                           -> J4[Conn_02x20_Odd_Even].Pin_30_30, U16[ESP-01v090].UTXD_1
+  GPIO40  /PGPIO40                           -> J4[Conn_02x20_Odd_Even].Pin_33_33
+  GPIO41  /PGPIO41                           -> J4[Conn_02x20_Odd_Even].Pin_32_32
+  GPIO42  /PGPIO42                           -> J4[Conn_02x20_Odd_Even].Pin_35_35
+  GPIO43  /PGPIO43                           -> J4[Conn_02x20_Odd_Even].Pin_34_34
+  GPIO44  /PGPIO44                           -> J4[Conn_02x20_Odd_Even].Pin_37_37
+  GPIO45  /PGPIO45                           -> J4[Conn_02x20_Odd_Even].Pin_36_36
+  GPIO46  /PGPIO46                           -> J4[Conn_02x20_Odd_Even].Pin_38_38
+  GPIO47  /PGA2350/GP47                      -> 
+==============================================================================
+MICROFRANK
+
+--- U7 RP2350  (/RP2350A/)
+  GPIO0   /RP2350A/GPIO0                     -> J9[DEBUG].Pin_1_1
+  GPIO1   /RP2350A/GPIO1                     -> J9[DEBUG].Pin_3_3
+  GPIO2   /RP2350A/GPIO2                     -> 
+  GPIO3   /RP2350A/GPIO3                     -> 
+  GPIO4   /Micro SD/DAT0                     -> J8[0475710001].DAT0_P7
+  GPIO5   /Micro SD/CDDAT3                   -> J8[0475710001].CD/DAT3_P2
+  GPIO6   /Micro SD/CLK                      -> J8[0475710001].CLK_P5
+  GPIO7   /Micro SD/CMD                      -> J8[0475710001].CMD_P3
+  GPIO8   /RP2350A/GPIO8                     -> R14[10K].pin1, U5[ESP-PSRAM64H].~{CE}_1
+  GPIO9   /Audio/TDA_DATA                    -> U8[TDA1387T].DATA_3
+  GPIO10  /Audio/TDA_SCLK                    -> U8[TDA1387T].SCLK_1
+  GPIO11  /Audio/TDA_LRCK                    -> U8[TDA1387T].LRCK_2
+  GPIO12  /HDMI/CLKN                         -> RN1[270R].R4.1_4
+  GPIO13  /HDMI/CLKP                         -> RN1[270R].R3.1_3
+  GPIO14  /HDMI/D0N                          -> RN1[270R].R2.1_2
+  GPIO15  /HDMI/D0P                          -> RN1[270R].R1.1_1
+  GPIO16  /HDMI/D1N                          -> RN2[270R].R4.1_4
+  GPIO17  /HDMI/D1P                          -> RN2[270R].R3.1_3
+  GPIO18  /HDMI/D2N                          -> RN2[270R].R2.1_2
+  GPIO19  /HDMI/D2P                          -> RN2[270R].R1.1_1
+  GPIO20  /RP2350A/GPIO20                    -> 
+  GPIO21  /RP2350A/GPIO21                    -> 
+  GPIO22  /RP2350A/GPIO22                    -> 
+  GPIO23  /RP2350A/GPIO23                    -> 
+  GPIO24  /RP2350A/GPIO24                    -> 
+  GPIO25  GPIO25                             -> R17[1K].pin2
+  GPIO26  /RP2350A/GPIO26                    -> 
+  GPIO27  /RP2350A/GPIO27                    -> 
+  GPIO28  /RP2350A/GPIO28                    -> 
+  GPIO29  /RP2350A/GPIO29                    -> 
+==============================================================================
+MINIFRANK
+
+--- U10 RP2350  (/RP2350A/)
+  GPIO0   /GPIO0                             -> R3[10K].pin1, U6[TXS0104ERGYR].A3_4, J2[UART].Pin_1_1
+  GPIO1   /GPIO1                             -> R4[10K].pin1, U6[TXS0104ERGYR].A4_5, J2[UART].Pin_3_3
+  GPIO2   /GPIO2                             -> R1[10K].pin1, U6[TXS0104ERGYR].A1_2
+  GPIO3   /GPIO3                             -> R2[10K].pin1, U6[TXS0104ERGYR].A2_3
+  GPIO4   /GPIO4                             -> J14[104031-0811].DAT0_7
+  GPIO5   /GPIO5                             -> J14[104031-0811].DAT3/CD_2
+  GPIO6   /GPIO6                             -> J14[104031-0811].CLK_5
+  GPIO7   /GPIO7                             -> J14[104031-0811].CMD_3
+  GPIO8   /RP2350A/GPIO8                     -> R18[10K].pin1, U7[ESP-PSRAM64H].~{CE}_1
+  GPIO9   /GPIO9                             -> J13[Ext_Sound].Pin_4_4, U12[TDA1387T].DATA_3
+  GPIO10  /GPIO10                            -> J13[Ext_Sound].Pin_1_1, U12[TDA1387T].SCLK_1
+  GPIO11  /GPIO11                            -> J13[Ext_Sound].Pin_2_2, U12[TDA1387T].LRCK_2
+  GPIO12  /GPIO12                            -> R34[1K].pin1, RN1[270R].R4.1_4
+  GPIO13  /GPIO13                            -> RN1[270R].R3.1_3, R31[330R].pin1
+  GPIO14  /GPIO14                            -> RN1[270R].R2.1_2, R33[1K].pin1
+  GPIO15  /GPIO15                            -> RN1[270R].R1.1_1, R30[330R].pin1
+  GPIO16  /GPIO16                            -> R32[1K].pin1, RN2[270R].R4.1_4
+  GPIO17  /GPIO17                            -> RN2[270R].R3.1_3, R29[330R].pin1
+  GPIO18  /GPIO18                            -> RN2[270R].R2.1_2, R35[100R].pin2
+  GPIO19  /GPIO19                            -> RN2[270R].R1.1_1, R36[100R].pin2
+  GPIO20  /GPIO20                            -> U11[ESP-01v090].URXD_8, J10[Conn_02x05_Top_Bottom].Pin_4_4, J9[GP2].4_4
+  GPIO21  /GPIO21                            -> U11[ESP-01v090].UTXD_1, J10[Conn_02x05_Top_Bottom].Pin_3_3, J9[GP2].3_3
+  GPIO22  /GPIO22                            -> S2[SW_DIP_x02].pin1
+  GPIO23  /RP2350A/GPIO23                    -> 
+  GPIO24  /RP2350A/GPIO24                    -> 
+  GPIO25  GPIO25                             -> R24[1K].pin2
+  GPIO26  /GPIO26                            -> D3[3V3].K_1, R28[1K].pin1
+  GPIO27  /GPIO27                            -> D2[3V3].K_1, R27[1K].pin1
+  GPIO28  /RP2350A/GPIO28                    -> 
+  GPIO29  /RP2350A/GPIO29                    -> 
+==============================================================================
+NYX
+
+--- U3 RP2350B  (/RP2350B/)
+  GPIO0   /GPIO0                             -> J3[~].pin1
+  GPIO1   /GPIO1                             -> J3[~].pin2
+  GPIO2   /GPIO2                             -> J3[~].pin4
+  GPIO3   /GPIO3                             -> J3[~].pin5
+  GPIO4   /GPIO4                             -> J3[~].pin6
+  GPIO5   /GPIO5                             -> J3[~].pin7
+  GPIO6   /GPIO6                             -> J3[~].pin9
+  GPIO7   /GPIO7                             -> J3[~].pin10
+  GPIO8   /GPIO8                             -> J3[~].pin11
+  GPIO9   /GPIO9                             -> J3[~].pin12
+  GPIO10  /GPIO10                            -> J3[~].pin14
+  GPIO11  /GPIO11                            -> J3[~].pin15
+  GPIO12  /GPIO12                            -> J3[~].pin16
+  GPIO13  /GPIO13                            -> J3[~].pin17
+  GPIO14  /GPIO14                            -> J3[~].pin19
+  GPIO15  /GPIO15                            -> J3[~].pin20
+  GPIO16  /GPIO16                            -> J1[~].pin21
+  GPIO17  /GPIO17                            -> J1[~].pin22
+  GPIO18  /GPIO18                            -> J1[~].pin24
+  GPIO19  /GPIO19                            -> J1[~].pin25
+  GPIO20  /GPIO20                            -> J1[~].pin26
+  GPIO21  /GPIO21                            -> J1[~].pin27
+  GPIO22  /GPIO22                            -> J1[~].pin29
+  GPIO23  /RP2350B/GPIO23                    -> 
+  GPIO24  /RP2350B/GPIO24                    -> 
+  GPIO25  Net-(U3-GPIO25)                    -> R4[1K].pin2
+  GPIO26  /GPIO26                            -> J1[~].pin31
+  GPIO27  /GPIO27                            -> J1[~].pin32
+  GPIO28  /GPIO28                            -> J1[~].pin34
+  GPIO29  /RP2350B/GPIO29                    -> 
+  GPIO30  /RP2350B/GPIO30                    -> 
+  GPIO31  /RP2350B/GPIO31                    -> 
+  GPIO32  /RP2350B/GPIO32                    -> 
+  GPIO33  /RP2350B/GPIO33                    -> 
+  GPIO34  /RP2350B/GPIO34                    -> 
+  GPIO35  /RP2350B/GPIO35                    -> 
+  GPIO36  /RP2350B/GPIO36                    -> 
+  GPIO37  /RP2350B/GPIO37                    -> 
+  GPIO38  /RP2350B/GPIO38                    -> 
+  GPIO39  /RP2350B/GPIO39                    -> 
+  GPIO40  /RP2350B/GPIO40                    -> 
+  GPIO41  /RP2350B/GPIO41                    -> 
+  GPIO42  /RP2350B/GPIO42                    -> 
+  GPIO43  /RP2350B/GPIO43                    -> 
+  GPIO44  /RP2350B/GPIO44                    -> 
+  GPIO45  /RP2350B/GPIO45                    -> 
+  GPIO46  /RP2350B/GPIO46                    -> 
+  GPIO47  /RP2350B/GPIO47                    -> R2[10K].pin1, U1[ESP-PSRAM64].~{CE}_1
+==============================================================================
+OLDSKOOLFRANK
+
+--- U1 Pimoroni PGA2350  (/PGA2350/)
+  GPIO0   /MS_CLK/GP0                        -> R10[1K].pin1, J6[MDC-036].pin6, J1[UART].Pin_1_1
+  GPIO1   /MS_DATA/GP1                       -> R12[1K].pin1, J6[MDC-036].pin2, J1[UART].Pin_3_3
+  GPIO2   /KB_CLK/GP2                        -> R11[1K].pin1, J6[MDC-036].pin5
+  GPIO3   /KB_DATA/GP3                       -> R13[1K].pin1, J6[MDC-036].pin1
+  GPIO4   /DAT0/GP4                          -> J7[104031-0811].DAT0_7
+  GPIO5   /CDDAT3/GP5                        -> J7[104031-0811].DAT3/CD_2
+  GPIO6   /CLK/GP6                           -> J7[104031-0811].CLK_5
+  GPIO7   /CMD/GP7                           -> J7[104031-0811].CMD_3
+  GPIO8   /PGA2350/GP8                       -> 
+  GPIO9   /TDA_DATA/GP9                      -> U7[TDA1545A].DATA_3
+  GPIO10  /TDA_SCLK/GP10                     -> U7[TDA1545A].BCK_1
+  GPIO11  /TDA_LRCK/GP11                     -> U7[TDA1545A].WS_2
+  GPIO12  /CLKN/GP12                         -> R14[220R].pin2
+  GPIO13  /CLKP/GP13                         -> R15[220R].pin2
+  GPIO14  /D0N/GP14                          -> R16[220R].pin2
+  GPIO15  /D0P/GP15                          -> R17[220R].pin2
+  GPIO16  /D1N/GP16                          -> R18[220R].pin2
+  GPIO17  /D1P/GP17                          -> R19[220R].pin2
+  GPIO18  /D2N/GP18                          -> R20[220R].pin2
+  GPIO19  /D2P/GP19                          -> R21[220R].pin2
+  GPIO20  /J4/GP20                           -> J9[D-SUB 9 Male].4_4
+  GPIO21  /J3/GP21                           -> J9[D-SUB 9 Male].3_3
+  GPIO22  /LOAD_IN/GP22                      -> U8[CD4069UBE].I=*C_6
+  GPIO23  /EGP2/GP23                         -> R1[1K].pin2
+  GPIO24  /EGP0/GP24                         -> R2[1K].pin2
+  GPIO25  GP25                               -> R5[1K].pin2
+  GPIO26  /DATA1/GP26                        -> J9[D-SUB 9 Male].2_2
+  GPIO27  /DATA2/GP27                        -> J9[D-SUB 9 Male].1_1
+  GPIO28  /PGA2350/GP28                      -> 
+  GPIO29  /PGA2350/GP29                      -> 
+  GPIO30  /PGA2350/GP30                      -> 
+  GPIO31  /PGA2350/GP31                      -> 
+  GPIO32  /PGA2350/GP32                      -> 
+  GPIO33  /PGA2350/GP33                      -> 
+  GPIO34  /PGA2350/GP34                      -> 
+  GPIO35  /PGA2350/GP35                      -> 
+  GPIO36  /PGA2350/GP36                      -> 
+  GPIO37  /PGA2350/GP37                      -> 
+  GPIO38  /RX/GP38                           -> U5[ESP-01v090].URXD_8
+  GPIO39  /TX/GP39                           -> U5[ESP-01v090].UTXD_1
+  GPIO40  /PGA2350/GP40                      -> 
+  GPIO41  /PGA2350/GP41                      -> 
+  GPIO42  /PGA2350/GP42                      -> 
+  GPIO43  /PGA2350/GP43                      -> 
+  GPIO44  /PGA2350/GP44                      -> 
+  GPIO45  /PGA2350/GP45                      -> 
+  GPIO46  /PGA2350/GP46                      -> 
+  GPIO47  /PGA2350/GP47                      -> 
+==============================================================================
+TURBOSOUND
+==============================================================================
+ZEROFRANK
+
+--- U5 RP2350  (/RP2350A/)
+  GPIO0   /RP2350A/GPIO0                     -> J1[UART].Pin_1_1
+  GPIO1   /RP2350A/GPIO1                     -> J1[UART].Pin_3_3
+  GPIO2   /RP2350A/GPIO2                     -> 
+  GPIO3   /RP2350A/GPIO3                     -> 
+  GPIO4   /GPIO4                             -> J7[0475710001].DAT0_P7
+  GPIO5   /GPIO5                             -> J7[0475710001].CD/DAT3_P2
+  GPIO6   /GPIO6                             -> J7[0475710001].CLK_P5
+  GPIO7   /GPIO7                             -> J7[0475710001].CMD_P3
+  GPIO8   /RP2350A/GPIO8                     -> R13[10K].pin1, U3[ESP-PSRAM64H].~{CE}_1
+  GPIO9   /GPIO9                             -> U6[TDA1387T].DATA_3
+  GPIO10  /GPIO10                            -> U6[TDA1387T].SCLK_1
+  GPIO11  /GPIO11                            -> U6[TDA1387T].LRCK_2
+  GPIO12  /GPIO12                            -> RN1[270R].R4.1_4
+  GPIO13  /GPIO13                            -> RN1[270R].R3.1_3
+  GPIO14  /GPIO14                            -> RN1[270R].R2.1_2
+  GPIO15  /GPIO15                            -> RN1[270R].R1.1_1
+  GPIO16  /GPIO16                            -> RN2[270R].R4.1_4
+  GPIO17  /GPIO17                            -> RN2[270R].R3.1_3
+  GPIO18  /GPIO18                            -> RN2[270R].R2.1_2
+  GPIO19  /GPIO19                            -> RN2[270R].R1.1_1
+  GPIO20  /PIO_D+                            -> R1[1.5K].pin1, R6[22R].pin1
+  GPIO21  /PIO_D-                            -> R5[22R].pin1
+  GPIO22  /RP2350A/GPIO22                    -> 
+  GPIO23  /RP2350A/GPIO23                    -> 
+  GPIO24  /RP2350A/GPIO24                    -> 
+  GPIO25  GPIO25                             -> R16[1K].pin2
+  GPIO26  /RP2350A/GPIO26                    -> 
+  GPIO27  /RP2350A/GPIO27                    -> 
+  GPIO28  /RP2350A/GPIO28                    -> 
+  GPIO29  /RP2350A/GPIO29                    -> 

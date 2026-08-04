@@ -1,0 +1,27 @@
+# Build trees. CMake is told to build out-of-source; every one of these
+# is regenerable and none of it belongs in history.
+build/
+build-*/
+bld-*/
+cmake-build-*/
+
+# Build products, wherever they land.
+*.uf2
+*.elf
+*.bin
+*.hex
+*.dis
+*.map
+
+# Bench session output: captures, logs, scratch.
+out/
+
+# macOS
+.DS_Store
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
