@@ -148,3 +148,10 @@ endif()
 if(FRANK_FORCE_VIDEO)
     target_compile_definitions(frank-test PRIVATE FRANK_FORCE_VIDEO=${FRANK_FORCE_VIDEO})
 endif()
+
+# Bring-up: hold the boot until a USB console attaches, so the log of an
+# early failure is not lost before the host enumerates. Milliseconds.
+if(FRANK_CONSOLE_WAIT)
+    target_compile_definitions(frank-test PRIVATE
+        PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=${FRANK_CONSOLE_WAIT})
+endif()

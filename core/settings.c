@@ -99,12 +99,6 @@ bool settings_set_board(frank_board_id_t id, frank_role_t role) {
     return settings_save(&s);
 }
 
-bool settings_set_video(frank_video_mode_t mode) {
-    frank_settings_t s;
-    settings_load(&s);
-    s.video = (uint16_t)mode;
-    return settings_save(&s);
-}
 
 bool settings_clear(void) {
     uint32_t irq = save_and_disable_interrupts();

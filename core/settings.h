@@ -65,7 +65,10 @@ bool settings_save(const frank_settings_t *s);
 
 /* Convenience wrappers that load, modify one field and save. */
 bool settings_set_board(frank_board_id_t id, frank_role_t role);
-bool settings_set_video(frank_video_mode_t mode);
+/* Video is deliberately not stored - see core/video_request.h. An
+ * autodetected mode that outlives its boot is a trap; a deliberate
+ * one is cheap to repeat by holding H, V or C. */
+
 
 /* Wipe the record entirely — `board auto` / `video auto` at the console. */
 bool settings_clear(void);

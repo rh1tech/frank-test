@@ -7,6 +7,7 @@
  */
 
 #include "ui_video.h"
+#include "video_request.h"
 #include "ui_palette.h"
 #include "settings.h"
 
@@ -143,13 +144,11 @@ bool ui_video_switch(frank_video_mode_t mode) {
         }
     }
 
-    /* Persist first, then restart. The order matters: a reboot that
-     * happened before the write would come back up in the old mode and
-     * look like the command was ignored. */
-    if (!settings_set_video(mode)) {
-        printf("[video] could not store the choice; not restarting\n");
-        return false;
-    }
+    /* Ask for it, then restart. The request rides a watchdog scratch
+     * register across the reboot and is consumed by the next boot. It is
+     * not written to flash, so it applies once and a power cycle comes
+     * back up on whatever the board actually has. */
+    video_request_set(mode);
 
     printf("[video] restarting into %s\n", frank_video_mode_name(mode));
     stdio_flush();

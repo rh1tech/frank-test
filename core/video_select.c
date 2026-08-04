@@ -46,6 +46,7 @@
  */
 
 #include "video_select.h"
+#include "video_request.h"
 #include "settings.h"
 
 #include "pico/stdlib.h"
@@ -172,14 +173,8 @@ void video_select_boot_window(const frank_board_desc_t *board,
                    key, frank_video_mode_name(m), board->slug);
         } else {
             /* Echo, because the screen may not be able to. */
-            printf("[video] '%c' from %s -> %s%s\n", key, from,
-                   want_auto ? "auto" : frank_video_mode_name(m),
-                   want_auto ? " (stored choice cleared)" : " (stored)");
-
-            out->sticky_written = settings_set_video(m);
-            if (!out->sticky_written)
-                printf("[video] WARNING: could not write the stored choice; "
-                       "this will need holding again next boot.\n");
+            printf("[video] '%c' from %s -> %s\n", key, from,
+                   want_auto ? "auto" : frank_video_mode_name(m));
 
             if (!want_auto) {
                 out->mode            = m;
@@ -191,13 +186,26 @@ void video_select_boot_window(const frank_board_desc_t *board,
         }
     }
 
-    /* ---- 2. the sticky choice ---- */
-    frank_settings_t s;
-    if (settings_load(&s) && s.video != VIDEO_AUTO &&
-        mode_supported(board, (frank_video_mode_t)s.video)) {
-        out->mode   = (frank_video_mode_t)s.video;
-        out->source = VIDEO_CHOICE_STICKY;
-        return;
+    /* ---- 2. a mode the running firmware asked for ---- */
+    /* Set by ui_video_switch() immediately before it reboots, because a
+     * backend cannot be torn down in place. It rides a watchdog scratch
+     * register: it survives that reboot and nothing else.
+     *
+     * Deliberately not written to flash. A stored mode outranks
+     * detection and sits in its own sector, so it survived reflashing
+     * too - a board told once to use VGA kept coming up VGA whatever was
+     * loaded onto it afterwards, silently, while detection reported HDMI
+     * on the line above. Nothing autodetected earns that. Deliberate
+     * choices are cheap to repeat: hold H, V or C at boot. */
+    {
+        const frank_video_mode_t req = video_request_take();
+        if (req != VIDEO_AUTO && mode_supported(board, req)) {
+            printf("[video] %s requested before the restart\n",
+                   frank_video_mode_name(req));
+            out->mode   = req;
+            out->source = VIDEO_CHOICE_STICKY;
+            return;
+        }
     }
 
     /* ---- 3. compiled-in ---- */
@@ -226,8 +234,10 @@ void video_select_boot_window(const frank_board_desc_t *board,
 }
 
 bool video_select_set(frank_video_mode_t mode, bool persist) {
-    if (persist && !settings_set_video(mode))
-        printf("[video] WARNING: stored choice not written\n");
+    /* "persist" now means "survive the restart that applies this", not
+     * "write to flash" - see core/video_request.h for why nothing about
+     * video is stored any more. */
+    if (persist) video_request_set(mode);
 
     /* Every cross-family transition is a reboot, and within a family the
      * caller still has to tear the backend down. Returning "reboot" here

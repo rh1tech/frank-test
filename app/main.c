@@ -43,6 +43,7 @@ bool tests_link_poll(void);
 #include "hardware/vreg.h"
 #include "hardware/watchdog.h"
 #include "pico/bootrom.h"
+#include "hardware/structs/qmi.h"
 #include "pico/stdlib.h"
 
 #include <stdio.h>
@@ -650,6 +651,36 @@ static void run_all(void) {
     stdio_flush();
 }
 
+/* Flash timing for the raised clock. Runs from SRAM, because it is
+ * reconfiguring the interface it would otherwise be fetched through.
+ *
+ * The boards ask for PICO_FLASH_SPI_CLKDIV 2, which at 252 MHz clocks
+ * the flash at 126 MHz with the SDK's default RX delay. Plenty of parts
+ * will not do that, and a socketed module brings its own. When the reads
+ * come back wrong the symptom is not a flash error - it is the firmware
+ * crashing somewhere unrelated, on some boards and not others, which is
+ * how this presented: MegaFRANK dark while Core 2 was fine, and murmnes
+ * happy on both.
+ *
+ * Ported from murmnes, which runs this same clock on this same hardware.
+ * 88 MHz is its ceiling too. */
+static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz,
+                                                             int flash_max_mhz) {
+    const int clock_hz      = cpu_mhz * 1000000;
+    const int max_flash_freq = flash_max_mhz * 1000000;
+
+    int divisor = (clock_hz + max_flash_freq - (max_flash_freq >> 4) - 1) /
+                  max_flash_freq;
+    if (divisor == 1 && clock_hz >= 166000000) divisor = 2;
+
+    int rxdelay = divisor;
+    if (clock_hz / divisor > 100000000 && clock_hz >= 166000000) rxdelay += 1;
+
+    qmi_hw->m[0].timing = 0x60007000 |
+                          (uint32_t)rxdelay << QMI_M0_TIMING_RXDELAY_LSB |
+                          (uint32_t)divisor << QMI_M0_TIMING_CLKDIV_LSB;
+}
+
 int main(void) {
     /* Never let an attached debugger stop the clock.
      *
@@ -677,6 +708,8 @@ int main(void) {
      * runs this same clock on this same hardware without touching vreg,
      * and says as much in its own bring-up. Only an overclock past 252
      * would justify it, and then the flash timings have to move too. */
+    set_flash_timings(252, 88);
+    sleep_ms(10);
     if (!set_sys_clock_khz(252000, false))
         set_sys_clock_khz(126000, false);
 
@@ -802,6 +835,8 @@ int main(void) {
 #endif
 
     stage("video open");
+    printf("[video] opening %s (%s)\n", frank_video_mode_name(g_choice.mode),
+           video_choice_source_name(g_choice.source));
     frank_video_mode_t opened = ui_video_open(g_choice.mode);
 
     snprintf(g_mcu_line, sizeof(g_mcu_line), "%s rev %u",

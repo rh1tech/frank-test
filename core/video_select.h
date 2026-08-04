@@ -56,7 +56,6 @@ typedef struct {
     frank_video_mode_t    mode;
     video_choice_source_t source;
     const char           *key_source_name;  /* which input answered */
-    bool                  sticky_written;
 } video_choice_t;
 
 /* Run the boot window and decide.
