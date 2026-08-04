@@ -56,6 +56,11 @@ void ui_input_init(int ps2_kbd_clk, int ps2_mouse_clk);
  * boards with no way to choose a video mode at all. */
 void ui_input_init_keyboard(int ps2_kbd_clk);
 
+/* Bring the USB host up on its own, before the rest of the interface.
+ * Enumeration takes a moment, so the boot window can only offer a USB
+ * keyboard if this has been running for a while by the time it opens. */
+void ui_input_init_usb(void);
+
 /* Next key from the keyboard as a plain character, or -1. For the video
  * boot window, which wants one letter and has no use for arrows. */
 int  ui_input_getchar(void);

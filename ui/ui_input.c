@@ -59,11 +59,26 @@ void ui_input_init_keyboard(int ps2_kbd_clk) {
 }
 
 int ui_input_getchar(void) {
+    /* Pump the stacks. This is a boot-window key source, and the window
+     * runs before the main loop exists to do it - without this a USB
+     * keyboard is enumerated but never read, which looks exactly like a
+     * key that does not work. */
+    ui_input_task();
+
     const int k = ui_input_getkey();
     if (k == UI_KEY_NONE) return -1;
     if (k & UI_KEY_ALT)   return -1;
     if (k > 0xFF)         return -1;
     return k;
+}
+
+void ui_input_init_usb(void) {
+#if UI_INPUT_USB_HID
+    static bool done;
+    if (done) return;
+    done = true;
+    usbhid_init();
+#endif
 }
 
 void ui_input_init(int ps2_kbd_clk, int ps2_mouse_clk) {
@@ -76,9 +91,7 @@ void ui_input_init(int ps2_kbd_clk, int ps2_mouse_clk) {
     s_ptr.x = UI_SCREEN_W / 2;
     s_ptr.y = UI_SCREEN_H / 2;
 
-#if UI_INPUT_USB_HID
-    usbhid_init();
-#endif
+    ui_input_init_usb();   /* idempotent: main() starts it far earlier */
 
 #if UI_INPUT_PS2
     ui_ps2_init(ps2_kbd_clk, ps2_mouse_clk);

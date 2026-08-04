@@ -737,6 +737,11 @@ int main(void) {
 
     /* Both of these touch the QMI directly and must run with the other
      * core parked; video_open below is what wakes it. */
+    /* The USB host first, because enumerating a keyboard takes long
+     * enough to miss the boot window otherwise. Detection and the
+     * benchmark below give it that time for free. */
+    ui_input_init_usb();
+
     stage("detect");
     detect_run(&g_detect);
     detect_report(&g_detect);
@@ -784,10 +789,14 @@ int main(void) {
      * video mode. */
     {
         const frank_pins_t *ip = g_detect.board ? &g_detect.board->pins : NULL;
-        if (ip && ip->ps2_kb_clk != PIN_NC) {
+        if (ip && ip->ps2_kb_clk != PIN_NC)
             ui_input_init_keyboard(ip->ps2_kb_clk);
-            video_select_add_source(ui_input_getchar, "keyboard");
-        }
+
+        /* One source for both keyboards: ui_input_getchar() reads
+         * whichever is present. Registered unconditionally, because a
+         * USB keyboard is the only one some boards have and gating this
+         * on the PS/2 pins left those boards unable to hold a key. */
+        video_select_add_source(ui_input_getchar, "keyboard");
 
         /* And take the console away where it is not one. The PS/2 mouse
          * shares GP0/GP1 with UART0, so its power-up chatter arrives at
