@@ -158,6 +158,26 @@ static bool audio_pin(const frank_pins_t *p, unsigned pin) {
     return false;
 }
 
+/* Is this GPIO actually on the board, or inside the module?
+ *
+ * Four boards socket a Pico-form-factor module rather than carrying the
+ * MCU directly, and the descriptor already says so: flash_bytes is zero
+ * because the flash lives on the module. On those, the header only
+ * breaks out GP0-GP22 and GP26-GP28. GP23 is the module's SMPS
+ * power-save control, GP24 its VBUS sense and GP25 its LED, and nothing
+ * at or above GP29 leaves the module at all.
+ *
+ * Scanning them reports shorts between pins that are not on the board.
+ * FRANK showed GP22-GP23, where GP22 is the tape jumper and GP23 has no
+ * net in the schematic whatsoever. Driving the SMPS mode pin to find
+ * that out is also not a good idea. */
+static bool off_module(const frank_board_desc_t *b, unsigned pin) {
+    if (!b || b->flash_bytes != 0) return false;      /* MCU is on the board */
+    if (pin >= 23 && pin <= 25) return true;
+    if (pin >= 29) return true;
+    return false;
+}
+
 /* Is this pin driven by something other than us?
  *
  * The ESP-01S sits on the UART pair and drives its TX continuously
@@ -240,6 +260,9 @@ static ui_test_state_t t_gpio_short(const detect_result_t *d, char *detail,
 
         if (pins && externally_driven(pins, pin))     continue;
         if (pins && externally_driven(pins, pin + 1)) continue;
+
+        if (off_module(d->board, pin))     continue;
+        if (off_module(d->board, pin + 1)) continue;
 
         int link = video_test_pins(pin, pin + 1);
         if (link & 1) {
