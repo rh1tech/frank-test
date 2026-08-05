@@ -34,6 +34,8 @@ target_compile_options(frank_ui PRIVATE -O2 -Wall -Wno-unused-parameter)
 add_library(frank_ui_video STATIC
     ui_video.c
     ui_video_vga.c
+    ui_textpage.c
+    ui_video_pio_hdmi.c
     ui_video_tv.c
     ui_cursor.c
     ui_input.c
@@ -71,7 +73,8 @@ target_sources(frank_ui_video PRIVATE ui_video_hstx.c)
 # duplicate-symbol link failure.
 target_include_directories(frank_ui_video PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/../drivers
-    ${CMAKE_CURRENT_LIST_DIR}/../drivers/ps2)
+    ${CMAKE_CURRENT_LIST_DIR}/../drivers/ps2
+    ${CMAKE_CURRENT_LIST_DIR}/../drivers/hdmi_pio)
 
 # PS/2 keyboard and mouse. On by default: five boards in the fleet have
 # the connectors and nothing else can drive the interface on a board with
@@ -85,8 +88,13 @@ endif()
 
 target_include_directories(frank_ui_video PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
+# hardware_dma and hardware_pio are here for the PIO HDMI backend, whose
+# driver includes their headers.
 target_link_libraries(frank_ui_video
     frank_ui
+    hardware_dma
+    hardware_pio
+    hardware_clocks
     frank_core
     pico_stdlib
     pico_multicore      # the HSTX scanout owns core 1

@@ -188,6 +188,15 @@ static const char *mfg_name(uint8_t id) {
     return NULL;
 }
 
+/* One pool of sector buffers for every test here.
+ *
+ * They had a static 512 bytes each and there are five of them, which is
+ * two and a half kilobytes of RAM held permanently for tests that run
+ * one at a time. Nothing in this file is re-entrant and nothing runs
+ * concurrently with anything else, so they share. */
+static uint8_t s_scratch[3][512];
+static uint8_t *sd_scratch(unsigned i) { return s_scratch[i % 3u]; }
+
 /* What the probe found, kept for the read test and for the log. */
 static struct {
     bool     present;
@@ -422,7 +431,7 @@ static ui_test_state_t t_sd_read(const detect_result_t *d, char *detail,
         return TEST_NORUN;
     }
 
-    static uint8_t sec[512];
+    uint8_t *sec = sd_scratch(0);
     sd_select(&sp);
 
     /* Byte address on SDSC, sector address on SDHC and SDXC. Sector 0
@@ -518,7 +527,7 @@ static ui_test_state_t t_sd_speed(const detect_result_t *d, char *detail,
     gpio_set_function(sp.mosi, GPIO_FUNC_SPI);
     gpio_set_function(sp.miso, GPIO_FUNC_SPI);
 
-    static uint8_t buf[512];
+    uint8_t *buf = sd_scratch(0);
     unsigned  sectors = 0;
     bool      ok      = true;
 
@@ -654,7 +663,7 @@ static ui_test_state_t t_sd_write(const detect_result_t *d, char *detail,
     const uint32_t sector = (uint32_t)((s_card.bytes / 512ull) - 1ull);
     const uint32_t arg = s_card.block_addressed ? sector : sector * 512u;
 
-    static uint8_t orig[512], work[512], back[512];
+    uint8_t *orig = sd_scratch(0), *work = sd_scratch(1), *back = sd_scratch(2);
     bool ok = true;
     const char *why = NULL;
 

@@ -102,8 +102,14 @@ static const char *state_name(ui_test_state_t st) {
 
 /* Everything is written through one buffer and one f_write, because a
  * FatFs write per line on a card with a 32 KiB cluster is slow enough to
- * look like a hang. */
-#define REPORT_MAX 4096
+ * look like a hang.
+ *
+ * Two kilobytes rather than four: a full run is about forty rows at
+ * sixty characters, and the PIO HDMI driver's palette table wants four
+ * kilobytes of its own. What overflows is truncated by snprintf rather
+ * than corrupting anything, and the summary is written before the
+ * attestations for that reason. */
+#define REPORT_MAX 2048
 
 static int append(char *buf, int at, const char *fmt, ...) {
     if (at < 0 || at >= REPORT_MAX - 1) return at;

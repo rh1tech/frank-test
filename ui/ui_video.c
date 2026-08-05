@@ -28,6 +28,7 @@ static unsigned     back_idx;
 extern const ui_video_backend_t ui_video_backend_hstx_hdmi;
 extern const ui_video_backend_t ui_video_backend_hstx_vga;
 extern const ui_video_backend_t ui_video_backend_tv;
+extern const ui_video_backend_t ui_video_backend_pio_hdmi;
 
 /* Ordered by preference within each mode. The first one whose init()
  * succeeds wins; a backend that cannot run returns false and the next is
@@ -38,7 +39,12 @@ extern const ui_video_backend_t ui_video_backend_tv;
  * says so, which is the correct behaviour rather than a placeholder: the
  * operator gets a picture and a message, not a blank screen. */
 static const ui_video_backend_t *const backends[] = {
+    /* HSTX first: where the pins allow it, hardware TMDS beats a PIO
+     * program and a core. The PIO backend refuses those boards and
+     * takes the ones HSTX cannot reach - the Waveshare PiZero, whose
+     * connector is on GP32-39. */
     &ui_video_backend_hstx_hdmi,
+    &ui_video_backend_pio_hdmi,
     &ui_video_backend_hstx_vga,
     &ui_video_backend_tv,
 };

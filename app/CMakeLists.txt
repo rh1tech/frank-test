@@ -56,6 +56,11 @@ add_executable(frank-test
     ${FW_ROOT}/drivers/fatfs/ffsystem.c
     ${FW_ROOT}/drivers/fatfs/diskio.c
     ${FW_ROOT}/drivers/sdblock/sdblock.c
+
+    # PIO HDMI, for the boards HSTX cannot reach. Vendored from murmnes,
+    # which already drives the Waveshare PiZero this is here for.
+    ${FW_ROOT}/drivers/hdmi_pio/hdmi.c
+    ${FW_ROOT}/drivers/hdmi_pio/hdmi_scanline.S
     ${FW_ROOT}/tests/tests_memory.c
     ${FW_ROOT}/tests/tests_board.c
     ${FW_ROOT}/tests/tests_psram_spi.c
@@ -113,6 +118,7 @@ target_include_directories(frank-test PRIVATE
     ${FW_ROOT}/drivers/ps2
     ${FW_ROOT}/drivers/tv
     ${FW_ROOT}/drivers/fatfs
+    ${FW_ROOT}/drivers/hdmi_pio
     ${FW_ROOT}/drivers/sdblock)
 
 # Pairs with set_sys_clock_khz(252000) in main(): clk_hstx = clk_sys/2 =

@@ -87,6 +87,14 @@ static void __not_in_flash("ui_vsync") vsync_cb(void) {
 }
 
 static bool hstx_init(void) {
+    /* Only where the connector is on the pins HSTX drives. The RP2350
+     * routes it to GP12-19 and nowhere else, so a board wired anywhere
+     * else gets TMDS clocked into pins joined to nothing and a dark
+     * socket - which is what the Waveshare PiZero did before the PIO
+     * backend existed to take it. */
+    extern int ui_video_pio_base(void);
+    if (ui_video_pio_base() >= 32) return false;
+
 #if PICO_RP2040
     /* No HSTX on this part. Not a fault — the caller tries the next
      * backend, which on frank-with-a-Pico-1 is the PIO path. */

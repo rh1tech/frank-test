@@ -1012,6 +1012,13 @@ int main(void) {
     g_choice.source = VIDEO_CHOICE_DEFAULT;
 #endif
 
+    /* Which HDMI backend can serve this board is decided by where its
+     * connector is, and only the descriptor knows. */
+    {
+        extern void ui_video_pio_set_base(int base);
+        ui_video_pio_set_base(g_detect.board ? g_detect.board->pins.video_base : 12);
+    }
+
     stage("video open");
     printf("[video] opening %s (%s)\n", frank_video_mode_name(g_choice.mode),
            video_choice_source_name(g_choice.source));

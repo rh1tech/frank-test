@@ -498,23 +498,21 @@ const frank_board_desc_t frank_board_table[] = {
      * another platform, so the rig should be able to check one.
      *
      * Video is the thing to know about. Its HDMI connector is on
-     * GP32-39, and HSTX on the RP2350 is fixed to GP12-19 - so neither
-     * of this firmware's video backends can drive it. murmnes reaches
-     * it with a PIO HDMI driver, which is what would have to be ported.
-     * CAP_VIDEO_HDMI is therefore deliberately *not* declared: the
-     * connector exists, and claiming it while having no way to use it
-     * would put an enabled menu item in front of an operator and give
-     * them a dark screen.
+     * GP32-39, and HSTX on the RP2350 is fixed to GP12-19, so the HSTX
+     * backends cannot drive it at all. It is served by the PIO HDMI
+     * driver instead, vendored from murmnes, which already drives this
+     * board - see ui/ui_video_pio_hdmi.c. The two HDMI backends tell
+     * each other apart by video_base and refuse what they cannot serve.
      *
-     * Which means the interface has nowhere to draw on this board. The
-     * tests still run and still report over the console and to the SD
-     * card, and that is the honest state of it until PIO HDMI lands.
+     * That path scans a 320x240 indexed framebuffer, so this board gets
+     * the text page rather than the desktop, exactly as composite does.
      *
      * Pins from murmnes' board_z0.h, which is where this board is
      * already supported. */
     .id = FRANK_BOARD_Z0PA, .name = "Z0pa", .slug = "z0pa",
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
-    .caps = CAP_PSRAM_QMI | CAP_SD | CAP_PS2 | CAP_GAMEPAD_NES
+    .caps = CAP_VIDEO_HDMI
+          | CAP_PSRAM_QMI | CAP_SD | CAP_PS2 | CAP_GAMEPAD_NES
           | CAP_AUDIO_I2S | CAP_AUDIO_CODEC_I2C | CAP_I2C
           | CAP_USB_DEVICE | CAP_USB_HOST | CAP_LED_PLAIN,
     .pins = { PINS_NONE, PINS_UART01,
@@ -526,16 +524,19 @@ const frank_board_desc_t frank_board_table[] = {
               .i2s_data = 10, .i2s_clk_base = 11, .i2s_mclk = NC,
               /* I2C1 on GP2/GP3 configures the PCM5122 when fitted. */
               .i2c_sda = 2, .i2c_scl = 3,
+              /* The HDMI connector, which HSTX cannot reach - the PIO
+               * backend takes this board on the strength of this pin
+               * being above 31. */
+              .video_base = 32,
               .psram_cs = 47, .led_plain = 25 },
     SIG(sig_z0pa),
     .flash_bytes = 4u * 1024u * 1024u,
     .psram_bytes = 8u * 1024u * 1024u,
-    .manual_note = "Waveshare RP2350-PiZero. Its HDMI is on GP32-39, "
-                   "which HSTX cannot reach - this firmware has no PIO "
-                   "HDMI backend yet, so there is no picture. Run the "
-                   "tests over the serial console, or save a report to "
-                   "the SD card. The PCM5122 audio hat, if fitted, sits "
-                   "on I2S GP18/19 with I2C on GP2/GP3.",
+    .manual_note = "Waveshare RP2350-PiZero. HDMI is driven from the PIO "
+                   "on GP32-39, not HSTX, and shows the text page rather "
+                   "than the desktop - 320x240 is what that driver "
+                   "scans. The PCM5122 audio hat, if fitted, sits on I2S "
+                   "GP18/19 with I2C on GP2/GP3.",
 },
 
 };
