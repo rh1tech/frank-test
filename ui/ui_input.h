@@ -112,4 +112,17 @@ int ui_input_getkey(void);
 bool ui_input_mouse_connected(void);
 bool ui_input_keyboard_connected(void);
 
+
+/* The PS/2 side, for the PS/2 test dialog. These are implemented in
+ * ui_input_ps2.c and are no-ops in a build without PS/2 support.
+ *
+ * The byte count is raw, taken off the wire before decoding: a port
+ * carrying garbage is wired but wrong, and looks identical to a dead one
+ * if you only watch decoded keys. */
+bool     ui_ps2_keyboard_up(void);
+bool     ui_ps2_mouse_up(void);
+bool     ui_ps2_mouse_read(int *dx, int *dy, int *wheel, unsigned *buttons);
+uint32_t ui_ps2_kbd_bytes(void);
+uint8_t  ui_ps2_kbd_last_byte(void);
+
 #endif /* UI_INPUT_H */

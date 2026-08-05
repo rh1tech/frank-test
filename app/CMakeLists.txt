@@ -41,6 +41,8 @@ add_executable(frank-test
     main.c
     dlg_audio.c
     dlg_nespad.c
+    dlg_led.c
+    dlg_ps2.c
     dlg_tape.c
     ${FW_ROOT}/core/registry.c
     ${FW_ROOT}/tests/tests_memory.c

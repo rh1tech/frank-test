@@ -231,6 +231,24 @@ static void gate_menus(void) {
                      g_detect.board->pins.pad_d1    != PIN_NC;
     ui_desktop_set_cmd_enabled(CMD_NESPAD, nes);
 
+    /* The dialog is worth opening whenever the board has a port, even
+     * with nothing plugged in: "no bytes" against a port that exists is
+     * a result, and the panel says what to check. */
+    const bool ps2 = g_detect.board &&
+                     g_detect.board->id != FRANK_BOARD_UNKNOWN &&
+                     (g_detect.board->caps & CAP_PS2) &&
+                     (g_detect.board->pins.ps2_kb_clk != PIN_NC ||
+                      g_detect.board->pins.ps2_ms_clk != PIN_NC);
+    ui_desktop_set_cmd_enabled(CMD_PS2, ps2);
+
+    const bool leds = g_detect.board &&
+                      g_detect.board->id != FRANK_BOARD_UNKNOWN &&
+                      (((g_detect.board->caps & CAP_LED_PLAIN) &&
+                        g_detect.board->pins.led_plain != PIN_NC) ||
+                       ((g_detect.board->caps & CAP_LED_WS2812) &&
+                        g_detect.board->pins.led_ws2812 != PIN_NC));
+    ui_desktop_set_cmd_enabled(CMD_LED, leds);
+
     /* The tape input needs both the comparator and a pin to read it on.
      * A DIP-gated board still qualifies: the switch is the operator's to
      * close, and the dialog says which one. */
@@ -613,6 +631,22 @@ static void do_command(int cmd) {
             const dlg_ctx_t ctx = { .detect = &g_detect,
                                     .paint_background = paint_desktop };
             dlg_nespad(&ctx);
+            redraw();
+            break;
+        }
+
+        case CMD_LED: {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            dlg_led(&ctx);
+            redraw();
+            break;
+        }
+
+        case CMD_PS2: {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            dlg_ps2(&ctx);
             redraw();
             break;
         }

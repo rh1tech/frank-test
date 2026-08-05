@@ -61,4 +61,13 @@ void dlg_nespad(const dlg_ctx_t *c);
 /* Watch the tape input and draw what arrives, until Esc or Stop. */
 void dlg_tape(const dlg_ctx_t *c);
 
+/* The PS/2 ports, watched live. A port with nothing plugged into it is
+ * silent and so is a broken one, so this shows the traffic and lets the
+ * operator judge. */
+void dlg_ps2(const dlg_ctx_t *c);
+
+/* The indicator LEDs. Firmware can drive a pin and cannot see light, so
+ * this drives them and leaves the verdict to whoever is looking. */
+void dlg_led(const dlg_ctx_t *c);
+
 #endif /* DLGS_H */

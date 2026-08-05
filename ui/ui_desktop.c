@@ -90,6 +90,8 @@ static ui_menu_item_t tests_items[] = {
     { "Run Selected",        'E', true,  false, CMD_RUN_SELECTED },
     { NULL,                  0,   true,  false, CMD_NONE },
     { "NES Gamepad(s)...",   'G', false, false, CMD_NESPAD },
+    { "PS/2 Ports...",       'P', false, false, CMD_PS2 },
+    { "LEDs...",             'L', false, false, CMD_LED },
     { "Tape In...",          'N', false, false, CMD_TAPE },
 };
 
@@ -99,7 +101,7 @@ static const ui_menu_t menus[] = {
     { "Board",   board_items,  1, false, 'B' },
     { "Video",   video_items,  7, false, 'V' },
     { "Audio",   audio_items,  3, false, 'U' },
-    { "Tests",   tests_items,  5, false, 'T' },
+    { "Tests",   tests_items,  7, false, 'T' },
 };
 
 static const ui_menubar_t default_bar = {
@@ -199,8 +201,14 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
     int cx, cy, cw, ch;
     ui_window_content(&w, &cx, &cy, &cw, &ch);
 
-    const int list_w  = cw;
-    const int visible = ch / ROW_H;
+    /* The scroll bar takes its width off the rows when there is more
+     * list than window. Reserving it unconditionally would waste the
+     * column on every board whose tests happen to fit, and the detail
+     * text is what pays for it. */
+    const bool  scrolling = d->row_count > (ch / ROW_H);
+    const int   bar_w     = scrolling ? 13 : 0;
+    const int   list_w    = cw - bar_w;
+    const int   visible   = ch / ROW_H;
 
     for (int i = 0; i < visible; i++) {
         int idx = d->first_visible + i;
@@ -229,13 +237,45 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
              * mean different things and should not look alike. */
             ui_progress(s, cx + 176, y + 5, list_w - 200, 10, r->progress);
         } else if (r->detail) {
-            int dx = cx + list_w - 22 - ui_text_width(r->detail);
-            if (dx < cx + 176) dx = cx + 176;
             /* Measurements in a softer ink than the name: the name is
              * what you scan for, the number is what you read once you
              * have found it. */
-            ui_text(s, dx, y + 6, r->detail,
-                    r->state == TEST_FAIL ? UI_FAIL : UI_GREY_5);
+            const uint8_t ink = (r->state == TEST_FAIL) ? UI_FAIL : UI_GREY_5;
+            const int right  = cx + list_w - 22;
+            const int avail  = right - (cx + 176);
+
+            if (ui_text_width(r->detail) <= avail) {
+                ui_text(s, right - ui_text_width(r->detail), y + 6, r->detail, ink);
+            } else {
+                /* Two lines rather than a sentence running under the
+                 * status tick. Broken at a space, and at the last one
+                 * that still fits, so the first line is as full as it
+                 * can be and the tail is what wraps. A detail with no
+                 * spaces left to break on is drawn as it was and allowed
+                 * to overrun: truncating a measurement is worse than
+                 * crowding one. */
+                /* Comfortably over any detail a test writes; the loop
+                 * bounds on it rather than trusting the string. */
+                char head[80];
+                int  cut = -1;
+                for (int k = 0; r->detail[k] && k < (int)sizeof(head) - 1; k++) {
+                    if (r->detail[k] != ' ') continue;
+                    memcpy(head, r->detail, (size_t)k);
+                    head[k] = '\0';
+                    if (ui_text_width(head) > avail) break;
+                    cut = k;
+                }
+
+                if (cut < 0) {
+                    ui_text(s, right - ui_text_width(r->detail), y + 6, r->detail, ink);
+                } else {
+                    memcpy(head, r->detail, (size_t)cut);
+                    head[cut] = '\0';
+                    const char *tail = r->detail + cut + 1;
+                    ui_text(s, right - ui_text_width(head), y + 1, head, ink);
+                    ui_text(s, right - ui_text_width(tail), y + 10, tail, ink);
+                }
+            }
         }
 
         draw_state(s, cx + list_w - 18, y + 2, r);
@@ -243,6 +283,10 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
         if (i + 1 < visible)
             ui_hline(s, cx, y + ROW_H - 1, list_w, UI_GREY_2);
     }
+
+    if (scrolling)
+        ui_scrollbar(s, cx + cw - bar_w, cy, ch,
+                     d->row_count, visible, d->first_visible);
 
     reclip(s);
 }

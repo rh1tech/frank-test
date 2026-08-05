@@ -89,6 +89,16 @@ static const char s_ascii[128][2] = {
 };
 
 /* Decoder state. Two flags and two modifier booleans is the whole thing. */
+/* What the port has actually carried, for the PS/2 test dialog. A
+ * decoded key proves the whole chain but hides where it broke; the raw
+ * byte and the count are what tell a silent port apart from one that is
+ * receiving noise. */
+static volatile uint32_t s_kbd_bytes;
+static volatile uint8_t  s_kbd_last;
+
+uint32_t ui_ps2_kbd_bytes(void)   { return s_kbd_bytes; }
+uint8_t  ui_ps2_kbd_last_byte(void) { return s_kbd_last; }
+
 static bool s_break;      /* 0xF0 seen: the next code is a key release  */
 static bool s_ext;        /* 0xE0 seen: the next code is an extended key */
 static bool s_shift, s_ctrl, s_alt;
@@ -123,6 +133,9 @@ int ui_ps2_getkey(void) {
     while (ps2_kbd_has_data()) {
         const int b = ps2_kbd_get_byte();
         if (b < 0) break;
+
+        s_kbd_bytes++;
+        s_kbd_last = (uint8_t)b;
 
         if (b == 0xF0) { s_break = true; continue; }
         if (b == 0xE0) { s_ext   = true; continue; }

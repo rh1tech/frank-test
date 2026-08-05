@@ -23,12 +23,12 @@ one that owns up.
 | `AUDIO_I2S`, `AUDIO_MUX`, `TURBOSOUND` | Interactive. Driven, not verified |
 | `GAMEPAD_NES` | Interactive |
 | `TAPE_IN`, `TAPE_DIP_GATED` | Interactive |
-| `PS2` | Untested |
+| `PS2` | Interactive. Raw byte counts, scancodes, mouse deltas |
 | `USB_HOST`, `USB_DEVICE`, `USB_HUB`, `USB_MUX`, `PIO_USB` | Untested |
 | `GAMEPAD_DB9` | Untested |
 | `ESP01` | Tested. AT, then AT+VER or AT+GMR |
 | `ESP32_SPI` | Untested |
-| `LED_PLAIN`, `LED_WS2812` | Untested |
+| `LED_PLAIN`, `LED_WS2812` | Interactive. Driven; the operator judges the light |
 | `DIPSWITCH` | Tested, as far as the hardware allows - see below |
 | `I2C` | Tested. Full 0x08-0x77 scan, and both lines checked idle-high |
 | `AUDIO_AMP`, `AUDIO_CODEC_I2C` | Untested |
@@ -41,7 +41,7 @@ one that owns up.
 These test real hardware, fail for one identifiable reason, and ask nothing of
 the operator's judgement.
 
-### 1. PS/2 keyboard and mouse (`CAP_PS2`)
+### 1. PS/2 keyboard and mouse (`CAP_PS2`) — done
 
 The descriptors already carry `ps2_kb_clk/dat` and `ps2_ms_clk/dat`. Most of the
 fleet has the connectors. Nothing touches them.
@@ -56,8 +56,19 @@ It proves the connector, the level shifting and the PIO receiver. It proves
 nothing at all with no device attached, so an empty port has to report *could not
 run* rather than failing.
 
-Those PS/2 connectors are a common cold-solder site, which is why this is
-probably the most valuable thing missing.
+Those PS/2 connectors are a common cold-solder site, which is why this was the
+most valuable thing missing.
+
+Built as `Tests` ▸ `PS/2 Ports`. The byte count is deliberately the raw one,
+taken before decoding: a port carrying garbage is wired but wrong — usually clock
+and data crossed — and looks identical to a dead one if you only watch decoded
+keys. The last raw code is shown beside it, because a port that reports 0xAA and
+nothing else has a keyboard that finished its self-test and a host that is not
+hearing keystrokes.
+
+The mouse panel names *why* it is off when it is: no pins on this board, or the
+console holding GP0/GP1. Those send an operator to completely different
+places.
 
 ### 2. Config DIP switches (`CAP_DIPSWITCH`) — done, with a correction
 
@@ -80,7 +91,7 @@ Nothing here reads the other switch banks. The audio mux, the USB mux and the
 PSRAM SO link are not wired to GPIOs at all, and *Manual Steps* remains the only
 honest thing to say about them.
 
-### 3. LEDs (`CAP_LED_PLAIN`, `CAP_LED_WS2812`)
+### 3. LEDs (`CAP_LED_PLAIN`, `CAP_LED_WS2812`) — done
 
 A plain LED is one GPIO. A WS2812 is one PIO state machine and a colour cycle.
 
@@ -90,6 +101,13 @@ whether you see red, then green, then blue, rather than in a pass/fail row.
 
 Mostly worth doing because a WS2812 that stays dark is usually a data-line fault,
 and that is worth catching.
+
+Built as `Tests` ▸ `LEDs`. The WS2812 is bit-banged rather than given a PIO state
+machine, because there is not one going spare — pio0 has the link, pio1 the I2S
+and PS/2, pio2 the gamepad reader and the composite encoder — and taking one here
+would mean taking it from something that is also a test. Interrupts are masked
+for the 30 microseconds a frame takes, which is safe only because the video
+scanout runs on core 1 and its interrupt is core 1's.
 
 ### 4. I²C bus scan (`CAP_I2C`) — done
 
@@ -230,14 +248,13 @@ exercises that path incidentally anyway.
 
 ## Suggested order
 
-1. PS/2 keyboard and mouse. Biggest gap, on the most boards
-2. LEDs. Needs the dialog pattern, same as the gamepad one
-3. USB HID host reporting. The data is already there
+1. USB HID host reporting. The data is already there
+2. Report export to SD. Makes the rig traceable
 6. Report export to SD. Makes the rig traceable
 7. LEDs and DB9 gamepads. Quick once the dialog pattern gets reused
 8. ESP-01S and ESP32. Needs modules to test against
 9. Burn-in loop and link soak. Once the rest is stable
 10. PIO-USB. After sorting out who owns which PIO
 
-Tier 1 is done apart from PS/2 and the LEDs, both of which need a dialog rather
-than a pass/fail row. Tested capabilities are now eighteen of thirty-one.
+Tier 1 is done. Tested or interactively covered capabilities are now twenty-one
+of thirty-one, and what remains is Tier 2 and the infrastructure below it.
