@@ -45,7 +45,13 @@ typedef struct {
     uint16_t role;         /* frank_role_t     */
     uint16_t video;        /* frank_video_mode_t */
     uint16_t board_rev;    /* PCB revision, operator-entered, 0 = unknown */
-    uint16_t reserved;
+
+    /* Keep the UART console instead of the PS/2 mouse, on the boards
+     * where they share GP0/GP1. Non-zero means keep it. This sits in
+     * what was the spare word, so records written by earlier builds stay
+     * valid and read as zero - which is the old behaviour, the mouse
+     * winning. */
+    uint16_t console;
     uint8_t  unit_serial[8];
     uint32_t crc32;        /* over everything above */
 } frank_settings_t;
@@ -67,7 +73,13 @@ bool settings_save(const frank_settings_t *s);
 bool settings_set_board(frank_board_id_t id, frank_role_t role);
 /* Video is deliberately not stored - see core/video_request.h. An
  * autodetected mode that outlives its boot is a trap; a deliberate
- * one is cheap to repeat by holding H, V or C. */
+ * one is cheap to repeat by holding H, V or C.
+ *
+ * The console preference is different and is stored: it is a deliberate
+ * choice about how the operator works, not a guess about what is
+ * plugged in, and having to hold a key every boot to keep a serial
+ * session is exactly the friction that made it worth a menu item. */
+bool settings_set_console(bool keep);
 
 
 /* Wipe the record entirely — `board auto` / `video auto` at the console. */

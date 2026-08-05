@@ -181,9 +181,16 @@ Three backends, all 640×480, chosen at boot or from the Video menu.
 | Composite | PIO software encoder | PAL/NTSC, 320×240 |
 
 Hold **H**, **V**, **C** or **A** (auto) during the two-second window at boot.
-Choosing from the Video menu instead persists the choice and reboots, because the
-boot path is the only code path that has ever been tested for bringing a backend
-up.
+Choosing from the Video menu instead reboots, because the boot path is the only
+code path that has ever been tested for bringing a backend up.
+
+Nothing about video is written to flash. The menu's request rides a watchdog
+scratch register across the reboot that applies it and is consumed there, so a
+power cycle always comes back on whatever the board actually has. This is
+deliberate: a stored mode outranks detection and lives in a sector `picotool
+load` does not erase, so a board told once to use VGA kept coming up VGA no
+matter what was flashed onto it afterwards, silently. A deliberate choice is
+cheap to repeat; a wrong one that survives reflashing costs an evening.
 
 Composite does not get the desktop, and cannot. A composite line carries
 somewhere around 320 usable samples however you arrange the source, and 6-pixel
@@ -347,6 +354,21 @@ The build is a USB HID host so that keyboards and mice can be tested, and the
 RP2350's single USB controller cannot be a CDC device at the same time. So the
 console is UART at 115200. For bring-up work, `-DUI_INPUT_USB_HID=OFF` trades the
 host for a USB serial console.
+
+On every board with a PS/2 port the mouse sits on GP0/GP1, which is UART0, so the
+two cannot both exist. The mouse wins by default: testing that connector is why
+it is on the board. Either of these keeps the console instead, and both leave the
+PS/2 mouse uninitialised.
+
+| Way | Scope |
+|---|---|
+| Hold **U** during the boot window | This boot only. Combines with a video key — hold both |
+| `File` ▸ `Serial Console` | Stored in flash, so it survives a reflash. Takes effect on the next boot |
+
+The menu item is stored rather than applied on the spot, because the pins are
+claimed once during start-up and there is no safe way to hand them back to a UART
+underneath a running PS/2 state machine. It is ticked when the console is being
+kept.
 
 ---
 

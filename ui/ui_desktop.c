@@ -39,6 +39,12 @@ static ui_menu_item_t mark_items[] = {
 };
 
 static ui_menu_item_t file_items[] = {
+    /* Ticked when the console is being kept. The change lands on the
+     * next boot, because the pins are claimed once during start-up and
+     * taking them back from a running PS/2 mouse is not something this
+     * firmware can do safely. */
+    { "Serial Console",      0,   true, false, CMD_CONSOLE },
+    { NULL,                  0,   true, false, CMD_NONE },
     { "Restart",             'R', true, false, CMD_RESTART },
     /* No keyboard equivalent, deliberately.
      *
@@ -89,7 +95,7 @@ static ui_menu_item_t tests_items[] = {
 
 static const ui_menu_t menus[] = {
     { "",        mark_items,   4, true,  'A' },
-    { "File",    file_items,   2, false, 'F' },
+    { "File",    file_items,   4, false, 'F' },
     { "Board",   board_items,  1, false, 'B' },
     { "Video",   video_items,  7, false, 'V' },
     { "Audio",   audio_items,  3, false, 'U' },
@@ -101,6 +107,16 @@ static const ui_menubar_t default_bar = {
 };
 
 const ui_menubar_t *ui_desktop_menus(void) { return &default_bar; }
+
+void ui_desktop_set_cmd_checked(int cmd, bool checked) {
+    if (cmd == CMD_NONE) return;
+    for (int m = 0; m < default_bar.count; m++) {
+        const ui_menu_t *mn = &default_bar.menus[m];
+        ui_menu_item_t *items = (ui_menu_item_t *)mn->items;
+        for (int i = 0; i < mn->count; i++)
+            if (items[i].cmd == cmd) items[i].checked = checked;
+    }
+}
 
 void ui_desktop_set_cmd_enabled(int cmd, bool enabled) {
     if (cmd == CMD_NONE) return;

@@ -33,6 +33,7 @@ enum {
     CMD_NONE = 0,
     CMD_ABOUT, CMD_BOARD_INFO, CMD_UNIT_SERIAL,
     CMD_RESTART, CMD_BOOTSEL, CMD_SET_BOARD, CMD_SHOW_SIG,
+    CMD_CONSOLE,
     CMD_VIDEO_AUTO, CMD_VIDEO_HDMI, CMD_VIDEO_VGA, CMD_VIDEO_COMPOSITE,
     CMD_VIDEO_TESTCARD,
     CMD_AUDIO_PWM, CMD_AUDIO_I2S, CMD_AUDIO_TS,
@@ -141,5 +142,6 @@ const ui_menubar_t *ui_desktop_menus(void);
  * would silently mean something else the first time a separator moved,
  * so this walks the tables looking for the command itself. */
 void ui_desktop_set_cmd_enabled(int cmd, bool enabled);
+void ui_desktop_set_cmd_checked(int cmd, bool checked);
 
 #endif /* UI_DESKTOP_H */

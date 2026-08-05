@@ -91,6 +91,13 @@ bool settings_save(const frank_settings_t *in) {
     return memcmp(SETTINGS_ADDR, &s, sizeof(s)) == 0;
 }
 
+bool settings_set_console(bool keep) {
+    frank_settings_t s;
+    settings_load(&s);            /* defaults on failure, which is fine */
+    s.console = keep ? 1u : 0u;
+    return settings_save(&s);
+}
+
 bool settings_set_board(frank_board_id_t id, frank_role_t role) {
     frank_settings_t s;
     settings_load(&s);            /* defaults on failure, which is fine */

@@ -56,6 +56,11 @@ bool tests_link_poll(void);
 static detect_result_t    g_detect;
 static video_detect_t     g_video;
 static video_choice_t     g_choice;
+
+/* The stored "keep the serial console" preference, read once at start-up
+ * and toggled from File > Serial Console. Only meaningful on boards
+ * where the PS/2 mouse and the console UART share GP0/GP1. */
+static bool               g_console_kept;
 static registry_results_t g_results;
 static ui_menubar_t       g_menubar;
 static ui_desktop_t       g_desk;
@@ -549,6 +554,34 @@ static void do_command(int cmd) {
         case CMD_VIDEO_COMPOSITE: ui_video_switch(VIDEO_COMPOSITE); break;
         case CMD_VIDEO_AUTO:      ui_video_switch(VIDEO_AUTO);      break;
 
+        /* Stored, not applied. The mouse claims GP0/GP1 once during
+         * start-up and there is no safe way to hand them back to a UART
+         * underneath a running PS/2 state machine, so this takes effect
+         * on the next boot and the dialog says so. */
+        case CMD_CONSOLE: {
+            const bool keep = !g_console_kept;
+            if (settings_set_console(keep)) {
+                g_console_kept = keep;
+                ui_desktop_set_cmd_checked(CMD_CONSOLE, keep);
+                if (keep) {
+                    snprintf(g_dlg[0], sizeof(g_dlg[0]), "Kept from the next boot.");
+                    snprintf(g_dlg[1], sizeof(g_dlg[1]), "The PS/2 mouse stays off:");
+                    snprintf(g_dlg[2], sizeof(g_dlg[2]), "it shares GP0/GP1 with the");
+                    snprintf(g_dlg[3], sizeof(g_dlg[3]), "console UART.");
+                } else {
+                    snprintf(g_dlg[0], sizeof(g_dlg[0]), "Off from the next boot.");
+                    snprintf(g_dlg[1], sizeof(g_dlg[1]), "The PS/2 mouse takes");
+                    snprintf(g_dlg[2], sizeof(g_dlg[2]), "GP0/GP1, and the console");
+                    snprintf(g_dlg[3], sizeof(g_dlg[3]), "goes with them.");
+                }
+                show_dialog("Serial Console", 4);
+            } else {
+                snprintf(g_dlg[0], sizeof(g_dlg[0]), "Could not write the setting.");
+                show_dialog("Serial Console", 1);
+            }
+            break;
+        }
+
         case CMD_RESTART:
             stdio_flush(); sleep_ms(50); watchdog_reboot(0, 0, 0);
             break;
@@ -750,6 +783,11 @@ int main(void) {
      * benchmark below give it that time for free. */
     ui_input_init_usb();
 
+    {
+        frank_settings_t cs;
+        if (settings_load(&cs)) g_console_kept = (cs.console != 0u);
+    }
+
     stage("detect");
     detect_run(&g_detect);
     detect_report(&g_detect);
@@ -870,6 +908,7 @@ int main(void) {
     g_desk.manual_note = g_detect.board ? g_detect.board->manual_note : NULL;
     g_desk.selected    = -1;
 
+    ui_desktop_set_cmd_checked(CMD_CONSOLE, g_console_kept);
     gate_menus();
 
     /* Composite renders its own text page rather than a scaled copy of
@@ -915,8 +954,9 @@ int main(void) {
              * losing stdout the moment the interface comes up is the
              * difference between a session and a guess. The mouse can be
              * exercised on a boot where nobody is watching the UART. */
-            if (video_select_console_kept()) {
-                printf("[input] U was held: PS/2 mouse left off, console stays\n");
+            if (video_select_console_kept() || g_console_kept) {
+                printf("[input] console kept (%s): PS/2 mouse left off\n",
+                       video_select_console_kept() ? "U held" : "stored setting");
                 mouse = -1;
             } else {
                 printf("[input] PS/2 mouse takes GP%d/%d from the console UART; "
