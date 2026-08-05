@@ -50,6 +50,7 @@ add_executable(frank-test
     ${FW_ROOT}/tests/tests_psram_spi.c
     ${FW_ROOT}/tests/tests_sd.c
     ${FW_ROOT}/tests/tests_esp.c
+    ${FW_ROOT}/tests/tests_usb.c
     ${FW_ROOT}/tests/tests_audio.c
     ${FW_ROOT}/tests/tests_link.c
     ${FW_ROOT}/tests/link_diag.c

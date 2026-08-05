@@ -453,6 +453,110 @@ static ui_test_state_t t_gpio_short(const detect_result_t *d, char *detail,
     return TEST_PASS;
 }
 
+/* The system clock, measured against the RTC's crystal.
+ *
+ * Two oscillators that know nothing about each other, each checking the
+ * other. The RP2350 runs from a crystal too, and a part that is present
+ * but off-frequency is otherwise invisible: every timer, baud rate and
+ * pixel clock is derived from it, so it has no reference to be wrong
+ * against. The DS3231 has one, and a good one - it is temperature
+ * compensated and specified to a couple of parts per million, which is
+ * two orders better than the plain crystal it is being used to check.
+ *
+ * The method is the cheapest thing that works: sit on the seconds
+ * register until it changes, note the system timer, wait for it to
+ * change again, and see how many microseconds the chip thinks passed.
+ * A second of the RTC's should be a second of ours.
+ *
+ * What it cannot do is say which one is wrong. It reports the
+ * disagreement and names both, because a rig that guessed would be
+ * wrong roughly half the time. In practice the DS3231 is the better
+ * reference and the finger points at the system crystal, but that is a
+ * judgement for whoever is holding the board.
+ *
+ * The tolerance is deliberately loose. A crystal 500 ppm out still keeps
+ * a UART happy and is not what this is looking for; a part oscillating
+ * on the wrong overtone, or a resonator fitted where a crystal belongs,
+ * is out by percent. */
+#define CLOCK_TOLERANCE_PPM 2000u
+
+static ui_test_state_t t_clock_xcheck(const detect_result_t *d, char *detail,
+                                      unsigned len, test_progress_fn p) {
+    const frank_pins_t *pins = d->board ? &d->board->pins : NULL;
+
+    if (!d->i2c_ds3231 || !pins ||
+        pins->i2c_sda == PIN_NC || pins->i2c_scl == PIN_NC) {
+        snprintf(detail, len, "needs the DS3231 as a reference");
+        return TEST_NORUN;
+    }
+
+    const unsigned sda = (unsigned)pins->i2c_sda, scl = (unsigned)pins->i2c_scl;
+    i2c_bb_init(sda, scl);
+
+    uint8_t s0 = 0;
+    if (!i2c_bb_read_regs(sda, scl, DS3231_ADDR, DS3231_REG_SECS, &s0, 1)) {
+        i2c_bb_release(sda, scl);
+        snprintf(detail, len, "RTC would not read");
+        return TEST_FAIL;
+    }
+
+    /* Wait for the first tick, so the measurement starts on the RTC's
+     * edge rather than somewhere in the middle of its second. */
+    absolute_time_t t_edge = get_absolute_time();
+    uint8_t s = s0;
+    bool ticked = false;
+    for (int i = 0; i < 400 && !ticked; i++) {
+        if (!i2c_bb_read_regs(sda, scl, DS3231_ADDR, DS3231_REG_SECS, &s, 1)) break;
+        if (s != s0) { t_edge = get_absolute_time(); ticked = true; break; }
+        sleep_ms(5);
+    }
+    if (!ticked) {
+        i2c_bb_release(sda, scl);
+        snprintf(detail, len, "RTC is not ticking");
+        return TEST_FAIL;
+    }
+
+    /* Then count four of its seconds. Longer is more precise - the 5 ms
+     * polling interval is the error floor and four seconds divides it
+     * down to about 1250 ppm - but a test row that takes ten seconds
+     * gets skipped by whoever is running the rig. */
+    const unsigned want = 4u;
+    unsigned counted = 0;
+    uint8_t  prev = s;
+    absolute_time_t t_end = t_edge;
+
+    while (counted < want) {
+        if (p) p((int)((counted * 1000u) / want), NULL);
+        if (!i2c_bb_read_regs(sda, scl, DS3231_ADDR, DS3231_REG_SECS, &s, 1)) break;
+        if (s != prev) { prev = s; counted++; t_end = get_absolute_time(); }
+        sleep_ms(5);
+    }
+    i2c_bb_release(sda, scl);
+    if (p) p(1000, NULL);
+
+    if (counted < want) {
+        snprintf(detail, len, "RTC stopped after %u second(s)", counted);
+        return TEST_FAIL;
+    }
+
+    const int64_t us = absolute_time_diff_us(t_edge, t_end);
+    const int64_t expected = (int64_t)want * 1000000;
+    const int64_t err = us - expected;
+
+    /* Parts per million, signed, of the system clock against the RTC. */
+    const int32_t ppm = (int32_t)((err * 1000000) / expected);
+    const uint32_t mag = (uint32_t)(ppm < 0 ? -ppm : ppm);
+
+    if (mag > CLOCK_TOLERANCE_PPM) {
+        snprintf(detail, len, "%ld ppm apart - one crystal is wrong",
+                 (long)ppm);
+        return TEST_FAIL;
+    }
+
+    snprintf(detail, len, "%s%ld ppm vs the RTC", ppm > 0 ? "+" : "", (long)ppm);
+    return TEST_PASS;
+}
+
 /* ------------------------------------------------------------------ */
 
 const frank_test_t frank_tests_board[] = {
@@ -461,6 +565,7 @@ const frank_test_t frank_tests_board[] = {
     { "I2C bus scan",   ICON_CHIP,    CAP_I2C, 0, t_i2c_scan     },
     { "Tape switch",    ICON_CASSETTE, CAP_TAPE_DIP_GATED, 0, t_tape_switch },
     { "RTC",            ICON_CLOCK,   CAP_RTC_DS3231, 0, t_rtc          },
+    { "Clock accuracy", ICON_CLOCK,   CAP_RTC_DS3231, 0, t_clock_xcheck },
     { "Unit serial",    ICON_CHIP_SMALL, CAP_ONEWIRE_DS2401, 0, t_onewire },
     { "GPIO short scan", ICON_CHIP,   0, 0, t_gpio_short   },
 };

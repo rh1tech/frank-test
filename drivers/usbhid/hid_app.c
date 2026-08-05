@@ -674,6 +674,59 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance,
 // TinyUSB HID Callbacks
 //--------------------------------------------------------------------
 
+
+//--------------------------------------------------------------------
+// Device inventory
+//--------------------------------------------------------------------
+
+/* What has enumerated, so the interface can say so.
+ *
+ * The host stack already knew all of this and kept it to itself: the
+ * firmware depended on USB working and had no way to report that it did.
+ * On a board whose USB port goes through a hub, this is also the only
+ * evidence the hub works - every device behind it had to pass through
+ * to be counted at all.
+ *
+ * Keyed by (address, instance) because a composite device mounts more
+ * than once and each interface is a separate thing to report. */
+#define USB_INV_MAX 8
+
+static usbhid_device_t s_inv[USB_INV_MAX];
+static int             s_inv_count;
+
+static void inv_add(uint8_t dev_addr, uint8_t instance, uint8_t kind) {
+    for (int i = 0; i < s_inv_count; i++)
+        if (s_inv[i].dev_addr == dev_addr && s_inv[i].instance == instance) return;
+    if (s_inv_count >= USB_INV_MAX) return;
+
+    uint16_t vid = 0, pid = 0;
+    tuh_vid_pid_get(dev_addr, &vid, &pid);
+
+    s_inv[s_inv_count].dev_addr = dev_addr;
+    s_inv[s_inv_count].instance = instance;
+    s_inv[s_inv_count].vid      = vid;
+    s_inv[s_inv_count].pid      = pid;
+    s_inv[s_inv_count].kind     = kind;
+    s_inv_count++;
+}
+
+static void inv_remove(uint8_t dev_addr, uint8_t instance) {
+    for (int i = 0; i < s_inv_count; i++) {
+        if (s_inv[i].dev_addr != dev_addr || s_inv[i].instance != instance) continue;
+        for (int j = i; j + 1 < s_inv_count; j++) s_inv[j] = s_inv[j + 1];
+        s_inv_count--;
+        return;
+    }
+}
+
+int usbhid_device_count(void) { return s_inv_count; }
+
+bool usbhid_device_info(int index, usbhid_device_t *out) {
+    if (index < 0 || index >= s_inv_count || !out) return false;
+    *out = s_inv[index];
+    return true;
+}
+
 void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_report, uint16_t desc_len) {
     uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
     printf("USB HID mounted: dev_addr=%d, instance=%d, protocol=%d\n", dev_addr, instance, itf_protocol);
@@ -699,9 +752,13 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
     if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
         keyboard_connected = 1;
         printf("  -> Keyboard detected\n");
+        inv_add(dev_addr, instance, USBHID_KIND_KEYBOARD);
     } else if (itf_protocol == HID_ITF_PROTOCOL_MOUSE) {
         mouse_connected = 1;
         printf("  -> Mouse detected\n");
+        inv_add(dev_addr, instance, USBHID_KIND_MOUSE);
+    } else {
+        inv_add(dev_addr, instance, USBHID_KIND_OTHER);
     }
 
     if (itf_protocol == HID_ITF_PROTOCOL_NONE) {
@@ -770,6 +827,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
 
 void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
     uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
+    inv_remove(dev_addr, instance);
     if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
         keyboard_connected = 0;
     } else if (itf_protocol == HID_ITF_PROTOCOL_MOUSE) {

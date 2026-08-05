@@ -7,6 +7,7 @@
 #ifndef USBHID_H
 #define USBHID_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -45,6 +46,25 @@ typedef struct {
 //--------------------------------------------------------------------
 // API Functions
 //--------------------------------------------------------------------
+
+/* What has enumerated. The host stack knew this already and had no way
+ * to say so, which left the one subsystem the interface depends on with
+ * nothing to report. */
+enum {
+    USBHID_KIND_OTHER = 0,
+    USBHID_KIND_KEYBOARD,
+    USBHID_KIND_MOUSE,
+};
+
+typedef struct {
+    uint8_t  dev_addr;
+    uint8_t  instance;
+    uint8_t  kind;
+    uint16_t vid, pid;
+} usbhid_device_t;
+
+int  usbhid_device_count(void);
+bool usbhid_device_info(int index, usbhid_device_t *out);
 
 void usbhid_init(void);
 void usbhid_task(void);
