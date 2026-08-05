@@ -230,6 +230,14 @@ static int row_height(const ui_test_row_t *r, int list_w) {
                                                               : ROW_H_WRAP;
 }
 
+/* What the whole list would stand at, at a given width. */
+static int list_total_h(const ui_desktop_t *d, int list_w) {
+    int total = 0;
+    for (int i = 0; i < d->row_count; i++)
+        total += row_height(&d->rows[i], list_w);
+    return total;
+}
+
 int ui_desktop_hit_row(const ui_desktop_t *d, int x, int y) {
     if (x < s_geom.cx || x >= s_geom.cx + s_geom.cw) return -1;
     for (int i = 0; i < s_geom.count; i++) {
@@ -297,12 +305,22 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
     int cx, cy, cw, ch;
     ui_window_content(&w, &cx, &cy, &cw, &ch);
 
-    /* The bar's width comes off the rows unconditionally, even when it
-     * is not drawn. Deciding it from whether the list overflows makes
-     * the wrap width depend on the row heights, which depend on the wrap
-     * width; reserving it always costs thirteen pixels of detail column
-     * and removes the circle. */
-    const int list_w = cw - BAR_W;
+    /* Laid out twice when it has to be.
+     *
+     * How wide a row is decides whether its detail wraps, which decides
+     * how tall it is, which decides whether the list overflows, which
+     * decides whether there is a scroll bar - which decides how wide a
+     * row is. Reserving the bar's width unconditionally broke that
+     * circle and left a blank strip down the right of every board whose
+     * tests happen to fit.
+     *
+     * So: lay out at full width, and if that overflows, lay out again
+     * with the bar's width taken off. Twice is the most it can ever be,
+     * because the second pass only ever makes rows taller and a list
+     * that overflowed at full width cannot stop overflowing at less. */
+    int list_w = cw;
+    if (d->first_visible > 0 || list_total_h(d, cw) > ch)
+        list_w = cw - BAR_W;
 
     s_geom.cx = cx; s_geom.cy = cy; s_geom.cw = cw; s_geom.ch = ch;
     s_geom.count = 0;
@@ -402,7 +420,7 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
     s_geom.bar_x     = cx + cw - BAR_W;
     s_geom.bar_y     = cy;
     s_geom.bar_h     = ch;
-    s_geom.bar_shown = (d->first_visible > 0) || (s_geom.count < d->row_count);
+    s_geom.bar_shown = (list_w != cw);
 
     if (s_geom.bar_shown)
         ui_scrollbar(s, s_geom.bar_x, s_geom.bar_y, s_geom.bar_h,
