@@ -20,7 +20,20 @@
 #include "pico.h"
 #include "hardware/sync.h"
 
-#define DI_RING_BUFFER_SIZE 512
+/* 512 islands is 72 KB, and this firmware never sends one.
+ *
+ * The queue exists because the scanline dispatcher drains it every
+ * vblank and an uninitialised queue is not a quiet one - but nothing
+ * here queues audio or infoframes, because nothing here has HDMI audio.
+ * That buffer was a seventh of the RP2350's RAM held for a feature this
+ * rig does not have, and it is what pushed the link over once the PIO
+ * HDMI driver arrived.
+ *
+ * Sixteen keeps the machinery intact and honest at 2 KB. If HDMI audio
+ * is ever wanted here, this is the number to put back. */
+#ifndef DI_RING_BUFFER_SIZE
+#define DI_RING_BUFFER_SIZE 16
+#endif
 static hstx_data_island_t di_ring_buffer[DI_RING_BUFFER_SIZE];
 static volatile uint32_t di_ring_head = 0;
 static volatile uint32_t di_ring_tail = 0;

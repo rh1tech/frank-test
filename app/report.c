@@ -104,12 +104,13 @@ static const char *state_name(ui_test_state_t st) {
  * FatFs write per line on a card with a 32 KiB cluster is slow enough to
  * look like a hang.
  *
- * Two kilobytes rather than four: a full run is about forty rows at
- * sixty characters, and the PIO HDMI driver's palette table wants four
- * kilobytes of its own. What overflows is truncated by snprintf rather
- * than corrupting anything, and the summary is written before the
- * attestations for that reason. */
-#define REPORT_MAX 2048
+ * Four kilobytes, which is comfortably more than a full run writes -
+ * forty rows at sixty characters plus the header is under three. It was
+ * briefly halved to make room for the PIO HDMI driver, which was the
+ * wrong thing to cut: a report that quietly loses its last rows is worse
+ * than one that does not fit in RAM, because nothing says it happened.
+ * The room came from elsewhere. */
+#define REPORT_MAX 4096
 
 static int append(char *buf, int at, const char *fmt, ...) {
     if (at < 0 || at >= REPORT_MAX - 1) return at;
