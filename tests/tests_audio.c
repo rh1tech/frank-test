@@ -48,6 +48,7 @@
  * not: a stuck LRCK, a dead channel and a working one all sound alike.
  */
 
+#include "attest.h"
 #include "frank_audio.h"
 #include "registry.h"
 
@@ -584,3 +585,56 @@ void audio_stop(const detect_result_t *d, audio_src_t s) {
             break;
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* What the operator heard                                             */
+/* ------------------------------------------------------------------ */
+
+/* The TurboSound, reported as somebody's word rather than a measurement.
+ *
+ * There is no measurement to report. The two AYs sit behind a pair of
+ * 74HC595s whose parallel outputs go only to the AY data bus; the second
+ * register's serial output is not wired to anything, and both
+ * output-enables are tied to ground, so the chain cannot even be
+ * tri-stated to let an AY drive the bus. Nothing returns. The audio
+ * leaves through the mixer and no board here has an ADC. Both AYs' I/O
+ * ports are unconnected on MegaFRANK except the second one's IOB, which
+ * drives a resistor DAC into the same analogue mix.
+ *
+ * So the row carries what the Audio dialog was told, and says which it
+ * is. "Not checked" is the honest state until someone has listened, and
+ * is deliberately not a failure: an untested thing and a broken thing
+ * are not the same claim.
+ *
+ * If a future revision routes the last 595's QH' back to a spare GPIO,
+ * this becomes a real test of everything up to the AY pins - the two
+ * shift registers, all three control lines and the traces between - and
+ * only the AYs themselves stay a matter of listening. */
+static ui_test_state_t t_turbosound(const detect_result_t *d, char *detail,
+                                    unsigned len, test_progress_fn p) {
+    (void)p;
+
+    if (!d->board || !(d->board->caps & CAP_TURBOSOUND)) {
+        snprintf(detail, len, "no TurboSound on this board");
+        return TEST_NA;
+    }
+
+    switch (attest_get(ATTEST_AUDIO_TS)) {
+        case ATTEST_YES:
+            snprintf(detail, len, "heard, by ear (Audio menu)");
+            return TEST_PASS;
+        case ATTEST_NO:
+            snprintf(detail, len, "driven, nothing heard");
+            return TEST_FAIL;
+        default:
+            snprintf(detail, len, "not checked - Audio > TurboSound");
+            return TEST_NORUN;
+    }
+}
+
+const frank_test_t frank_tests_audio[] = {
+    { "TurboSound", ICON_SPEAKER, CAP_TURBOSOUND, 0, t_turbosound },
+};
+
+const unsigned frank_tests_audio_len =
+    sizeof(frank_tests_audio) / sizeof(frank_tests_audio[0]);

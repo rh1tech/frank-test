@@ -245,7 +245,28 @@ routes audio back to an ADC pin, this changes.
 **Display presence.** No board wires hot-plug detect. *Video output* counting
 emitted frames is as far as honesty goes.
 
-**AY readback.** The 74HC595 chain is write-only. Nothing firmware can do.
+**AY readback.** Verified against MegaFRANK's netlist rather than assumed, and
+it is worse than "write-only" suggests. `DA0-DA7` connects three things: both
+AYs and the 595's parallel outputs, with no GPIO anywhere on it. The chain runs
+GP11 to `SER`, GP10 to `SRCLK`, GP9 to `RCLK`, then U8 `QH'` into U9 `SER` - and
+**U9's `QH'` goes nowhere**. Both `OE` pins are tied to ground, so the registers
+cannot be tri-stated to let an AY drive the bus even if something could read it.
+The clock is a crystal through a 74HC74 with no GPIO on it, and the AY I/O ports
+are unconnected apart from the second one's IOB, which drives a resistor DAC into
+the analogue mix.
+
+The audio route was checked too, since the mixer output reaches GP22 through the
+tape switch: `AMP_IN_L` goes through 10K into 10K to ground, halving an AY output
+of about a volt peak-to-peak to well under the input threshold. It never crosses.
+
+So the row reports what the operator heard, through core/attest.h, and says on
+its face that a person gave the verdict. "Not checked" is the state until someone
+listens, and is not a failure.
+
+One track would change most of this. Routing U9's `QH'` to a spare GPIO would let
+firmware shift a pattern through both registers and read it back, proving all
+three control lines, both 595s and the traces as far as the AY pins - leaving
+only the AYs themselves as a matter of listening.
 
 **Flash write and erase.** The firmware is running from it. A scratch-sector test
 is possible, but the risk against the value is poor, and the settings sector

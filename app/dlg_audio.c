@@ -22,6 +22,8 @@
 
 #include "dlgs.h"
 
+#include "attest.h"
+
 #include "ui_desktop.h"
 #include "ui_gfx.h"
 #include "ui_icons.h"
@@ -38,12 +40,21 @@
 /* Where Stop is, so the abort poll can hit-test it between notes without
  * re-deriving the layout. */
 static int  s_stop_x, s_stop_y, s_stop_w, s_stop_h;
+static int  s_yes_x, s_yes_w, s_no_x, s_no_w;
 static bool s_abort;
 
-static bool inside_stop(int x, int y) {
-    return x >= s_stop_x && x < s_stop_x + s_stop_w &&
+/* What the operator said on the way out, if anything. Nothing on these
+ * boards can hear the output - see core/attest.h - so their answer is
+ * the only evidence the audio path works, and leaving without giving one
+ * is a perfectly reasonable thing to do. */
+static attest_t s_answer;
+
+static bool inside(int x, int y, int bx, int bw) {
+    return x >= bx && x < bx + bw &&
            y >= s_stop_y && y < s_stop_y + s_stop_h;
 }
+
+static bool inside_stop(int x, int y) { return inside(x, y, s_stop_x, s_stop_w); }
 
 /* Polled between notes — about every 150 ms, which is close enough to
  * instant for a key press and far cheaper than making a note
@@ -54,12 +65,23 @@ static bool poll_abort(void) {
 
     int k = ui_input_getkey();
     while (k != UI_KEY_NONE) {
-        if (k == UI_KEY_ESC || k == UI_KEY_ENTER || k == ' ') s_abort = true;
+        /* Y and N answer and leave; Esc leaves without answering, which
+         * is not the same as "no" and must not be recorded as one. */
+        if (k == 'y' || k == 'Y') { s_answer = ATTEST_YES; s_abort = true; }
+        else if (k == 'n' || k == 'N') { s_answer = ATTEST_NO; s_abort = true; }
+        else if (k == UI_KEY_ESC || k == UI_KEY_ENTER || k == ' ') s_abort = true;
         k = ui_input_getkey();
     }
 
     const ui_pointer_t *p = ui_input_pointer();
-    if (p->pressed && inside_stop(p->x, p->y)) s_abort = true;
+    if (p->pressed) {
+        if (inside_stop(p->x, p->y)) s_abort = true;
+        else if (inside(p->x, p->y, s_yes_x, s_yes_w)) {
+            s_answer = ATTEST_YES; s_abort = true;
+        } else if (inside(p->x, p->y, s_no_x, s_no_w)) {
+            s_answer = ATTEST_NO;  s_abort = true;
+        }
+    }
 
     /* Move the pointer, do not recompose.
      *
@@ -148,7 +170,17 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
     s_stop_y = y + h - UI_WIN_PAD - DLG_BOT - 18;
     ui_button(s, s_stop_x, s_stop_y, s_stop_w, s_stop_h, "Stop", true, false, true);
 
-    ui_text(s, cx, s_stop_y + 5, "Esc or Stop to finish", UI_GREY_5);
+    /* The two that record something. They sit left of Stop so the
+     * destructive-looking one is not the default landing place for a
+     * click, and both say what they mean rather than OK/Cancel. */
+    s_no_w  = ui_button_width("Silent");
+    s_no_x  = s_stop_x - 8 - s_no_w;
+    s_yes_w = ui_button_width("I hear it");
+    s_yes_x = s_no_x - 8 - s_yes_w;
+    ui_button(s, s_yes_x, s_stop_y, s_yes_w, s_stop_h, "I hear it", true, false, true);
+    ui_button(s, s_no_x,  s_stop_y, s_no_w,  s_stop_h, "Silent",    true, false, true);
+
+    ui_text(s, cx, s_stop_y + 5, "Y / N, or Esc to leave it open", UI_GREY_5);
 
     ui_video_present();
 
@@ -167,7 +199,8 @@ void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
 
     printf("[audio] %s: looping L/R/C\n", audio_src_name(src));
 
-    s_abort = false;
+    s_abort  = false;
+    s_answer = ATTEST_UNKNOWN;
     int ch = 0;
     unsigned laps = 0;
 
@@ -192,6 +225,21 @@ void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
     }
 
     audio_stop(c->detect, src);
-    printf("[audio] %s: stopped after %u pass(es)\n",
-           audio_src_name(src), laps * AUDIO_CHANNELS + (unsigned)ch);
+
+    /* Only recorded when they actually said something. Closing the
+     * dialog is not a verdict, and storing it as one would turn "did not
+     * check" into "does not work". */
+    if (s_answer != ATTEST_UNKNOWN) {
+        static const attest_subject_t subj[] = {
+            [AUDIO_SRC_PWM] = ATTEST_AUDIO_PWM,
+            [AUDIO_SRC_I2S] = ATTEST_AUDIO_I2S,
+            [AUDIO_SRC_TS]  = ATTEST_AUDIO_TS,
+        };
+        attest_set(subj[src], s_answer);
+    }
+
+    printf("[audio] %s: stopped after %u pass(es), operator said %s\n",
+           audio_src_name(src), laps * AUDIO_CHANNELS + (unsigned)ch,
+           s_answer == ATTEST_YES ? "heard it"
+                                  : (s_answer == ATTEST_NO ? "silent" : "nothing"));
 }
