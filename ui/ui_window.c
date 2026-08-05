@@ -191,32 +191,65 @@ void ui_progress(ui_surface_t *s, int x, int y, int w, int h, int frac) {
         ui_hline(s, x + 1, y + 1, filled, UI_ACCENT_L);
 }
 
+/* The scroll bar, drawn quietly.
+ *
+ * It was a black-framed track with black-framed plates in it and solid
+ * black arrows - the same treatment a button gets, which is right for a
+ * control you press and much too loud for a strip that sits beside
+ * twenty rows of text. Next to a list of measurements it was the
+ * heaviest thing on screen and drew the eye away from the results.
+ *
+ * So: no outline around the track, one grey rule separating it from the
+ * rows, a lightly recessed channel, and a thumb that is a plain raised
+ * face rather than a framed plate. The arrows are grey and a pixel
+ * smaller. Nothing here needs a hard edge to read as a control, because
+ * its shape and position already say what it is.
+ */
 void ui_scrollbar(ui_surface_t *s, int x, int y, int h,
                   int total, int visible, int first) {
     const int w = 15;
 
-    /* Track is a recessed light grey; the thumb and arrows are raised
-     * plates on it. */
-    ui_fill(s, x, y, w, h, UI_GREY_2);
-    ui_frame(s, x, y, w, h, UI_BLACK);
-    ui_bevel_in(s, x + 1, y + 1, w - 2, h - 2);
+    /* The channel, and a single rule where it meets the list. */
+    ui_fill(s, x, y, w, h, UI_GREY_1);
+    ui_vline(s, x, y, h, UI_GREY_3);
 
-    ui_plate(s, x, y, w, w, UI_GREY_1);
-    ui_plate(s, x, y + h - w, w, w, UI_GREY_1);
+    /* Recessed, but in greys rather than against black: a shadow at the
+     * top and left, a highlight at the bottom and right. */
+    ui_hline(s, x + 1, y, w - 1, UI_GREY_3);
+    ui_hline(s, x + 1, y + h - 1, w - 1, UI_WHITE);
 
+    /* Arrow buttons: a face and a soft edge, no frame. */
+    for (int e = 0; e < 2; e++) {
+        const int by = e ? (y + h - w) : y;
+        ui_fill(s, x + 1, by, w - 1, w, UI_GREY_1);
+        ui_hline(s, x + 1, e ? by : by + w - 1, w - 1, UI_GREY_3);
+    }
+
+    /* The glyphs, in the same ink as a disabled label rather than in
+     * black. Four rows, narrowing to a point. */
     for (int i = 0; i < 4; i++) {
-        ui_hline(s, x + 7 - i, y + 5 + i, 1 + i * 2, UI_BLACK);
-        ui_hline(s, x + 7 - i, y + h - 6 - i, 1 + i * 2, UI_BLACK);
+        ui_hline(s, x + 7 - i, y + 5 + i, 1 + i * 2, UI_GREY_5);
+        ui_hline(s, x + 7 - i, y + h - 6 - i, 1 + i * 2, UI_GREY_5);
     }
 
     if (total <= visible || total <= 0) return;
 
     int track = h - w * 2;
     int th    = (track * visible) / total;
-    if (th < 12) th = 12;
-    int ty = y + w + ((track - th) * first) / (total - visible);
+    if (th < 16) th = 16;
+    if (th > track) th = track;
 
-    ui_plate(s, x + 1, ty, w - 2, th, UI_GREY_1);
+    const int span = (total > visible) ? (total - visible) : 1;
+    int ty = y + w + ((track - th) * first) / span;
+
+    /* The thumb: a raised face with a highlight and a shadow, and no
+     * outline. It is the only part that moves, which is enough to make
+     * it the thing you reach for. */
+    ui_fill(s, x + 3, ty, w - 5, th, UI_GREY_2);
+    ui_hline(s, x + 3, ty, w - 5, UI_WHITE);
+    ui_vline(s, x + 3, ty, th, UI_WHITE);
+    ui_hline(s, x + 3, ty + th - 1, w - 5, UI_GREY_4);
+    ui_vline(s, x + w - 3, ty, th, UI_GREY_4);
 }
 
 void ui_separator(ui_surface_t *s, int x, int y, int w) {
