@@ -908,10 +908,23 @@ int main(void) {
         if (mouse >= 0 && ip->uart_tx != PIN_NC &&
             (ip->uart_tx == mouse || ip->uart_rx == mouse ||
              ip->uart_tx == mouse + 1 || ip->uart_rx == mouse + 1)) {
-            printf("[input] PS/2 mouse takes GP%d/%d from the console UART; "
-                   "this is the last line you will see\n", mouse, mouse + 1);
-            stdio_flush();
-            sleep_ms(20);
+
+            /* Unless the operator asked to keep it. Holding U in the boot
+             * window says the console is worth more than the pointer on
+             * this run — debugging over a serial line, mostly, where
+             * losing stdout the moment the interface comes up is the
+             * difference between a session and a guess. The mouse can be
+             * exercised on a boot where nobody is watching the UART. */
+            if (video_select_console_kept()) {
+                printf("[input] U was held: PS/2 mouse left off, console stays\n");
+                mouse = -1;
+            } else {
+                printf("[input] PS/2 mouse takes GP%d/%d from the console UART; "
+                       "this is the last line you will see (hold U at boot to "
+                       "keep it)\n", mouse, mouse + 1);
+                stdio_flush();
+                sleep_ms(20);
+            }
         }
 
         ui_input_init(kbd, mouse);

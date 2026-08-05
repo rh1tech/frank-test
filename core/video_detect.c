@@ -119,23 +119,45 @@ static void restore_pad(unsigned pin, gpio_function_t f) {
         gpio_set_function(pin, f);
 }
 
-static int test_drive_case(unsigned pin0, unsigned pin1, int res,
-                           bool drive_high) {
+/* Drive pin0, watch pin1, once per polarity. */
+static bool drive_and_watch(unsigned pin0, unsigned pin1, bool drive_high) {
     gpio_init(pin0);
     gpio_set_dir(pin0, GPIO_OUT);
-    sleep_ms(33);
     gpio_put(pin0, drive_high);
 
     gpio_init(pin1);
     gpio_set_dir(pin1, GPIO_IN);
+    /* Pull the watched pin the opposite way, so only a real connection
+     * can drag it across. */
     if (drive_high) gpio_pull_down(pin1); else gpio_pull_up(pin1);
     sleep_ms(33);
 
-    bool followed = drive_high ? gpio_get(pin1) : !gpio_get(pin1);
-    if (followed) res |= drive_high ? ((1 << 5) | 1) : 1;
+    const bool followed = drive_high ? gpio_get(pin1) : !gpio_get(pin1);
 
     gpio_deinit(pin0);
     gpio_deinit(pin1);
+    return followed;
+}
+
+/* A pair is only connected if pin1 follows pin0 *both* ways.
+ *
+ * Testing one polarity was enough to produce a short that appeared on
+ * the first run after reset and never again: a floating pin holds charge
+ * from whatever last drove it, and against a pull-down it can read high
+ * once and settle by the time the operator runs the tests a second time.
+ * Nothing physical behaves that way. A soldered-together pair follows
+ * high when driven high and low when driven low, every time, so both are
+ * now required and the transient cannot pass.
+ *
+ * The value was also written after the settle rather than before it, so
+ * the pad spent the wait driving low and the level was sampled almost
+ * immediately after it changed. */
+static int test_drive_case(unsigned pin0, unsigned pin1, int res,
+                           bool drive_high) {
+    if (!drive_and_watch(pin0, pin1, true))  return res;
+    if (!drive_and_watch(pin0, pin1, false)) return res;
+
+    res |= drive_high ? ((1 << 5) | 1) : 1;
     return res;
 }
 

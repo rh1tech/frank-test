@@ -12,9 +12,10 @@
  *
  * WHAT IS BEING TESTED
  *
- * That a module in the socket answers over the UART. The firmware it is
- * expected to be running is frank-netcard, whose protocol is a small AT
- * dialect at 115200 8N1:
+ * That a module in the socket answers over the UART. Two firmwares are
+ * recognised, because both turn up in the field.
+ *
+ * frank-netcard, whose protocol is a small AT dialect at 115200 8N1:
  *
  *   AT        -> OK
  *   AT+VER    -> +VER:frank-netcard,1.0.0
@@ -27,10 +28,22 @@
  * this can honestly claim: nothing here touches WiFi, because a board
  * that cannot see an access point is not a faulty board.
  *
+ * And Espressif's stock AT firmware, which answers AT but has no AT+VER
+ * at all. It reports itself through AT+GMR instead:
+ *
+ *   AT+GMR    -> AT version:1.7.6.0(Jan 24 2022 08:56:02)
+ *                SDK version:3.0.6-dev(072755c)
+ *                compile time:Jun 17 2024 07:38:00
+ *                Bin version(Wroom 02):1.7.6
+ *                OK
+ *
+ * So AT+VER is asked first and AT+GMR second, and whichever answers
+ * names the firmware in the row. A module that answers AT and neither of
+ * those still passes: the socket and both directions of the UART are
+ * proven either way, and that is what this test is for.
+ *
  * The version and free heap are reported because they are free — the
- * module volunteers them — and because a module running something other
- * than frank-netcard will answer AT and then fail AT+VER, which is worth
- * telling apart from silence.
+ * module volunteers them.
  *
  *
  * WHY AN EMPTY SOCKET IS NOT A FAILURE
@@ -242,22 +255,35 @@ static ui_test_state_t t_esp01(const detect_result_t *d, char *detail,
      * than a failure, because the socket and the UART are both proven. */
     char ver[48] = "", heap[24] = "";
 
-    if (progress) progress(600, "AT+VER");
+    if (progress) progress(500, "AT+VER");
     esp_drain();
     esp_send("AT+VER");
     if (esp_collect(buf, sizeof buf, ESP_REPLY_MS)) esp_tag(buf, "+VER:", ver, sizeof ver);
 
-    if (progress) progress(900, "AT+HEAP");
-    esp_drain();
-    esp_send("AT+HEAP");
-    if (esp_collect(buf, sizeof buf, ESP_REPLY_MS)) esp_tag(buf, "+HEAP:", heap, sizeof heap);
+    if (ver[0]) {
+        /* frank-netcard. It has a heap query too, and free heap is worth
+         * knowing before anything opens a TLS socket. */
+        if (progress) progress(800, "AT+HEAP");
+        esp_drain();
+        esp_send("AT+HEAP");
+        if (esp_collect(buf, sizeof buf, ESP_REPLY_MS))
+            esp_tag(buf, "+HEAP:", heap, sizeof heap);
+    } else {
+        /* Espressif's stock AT firmware. AT+GMR answers with four
+         * unprefixed lines; the first is the one worth the row's width. */
+        if (progress) progress(800, "AT+GMR");
+        esp_drain();
+        esp_send("AT+GMR");
+        if (esp_collect(buf, sizeof buf, ESP_REPLY_MS))
+            esp_tag(buf, "AT version:", ver, sizeof ver);
+    }
 
     esp_uart_close(&p);
     if (progress) progress(1000, NULL);
 
     if (ver[0] && heap[0])  snprintf(detail, len, "%s, heap %s", ver, heap);
     else if (ver[0])        snprintf(detail, len, "%s", ver);
-    else                    snprintf(detail, len, "answers AT, no +VER (not netcard?)");
+    else                    snprintf(detail, len, "answers AT, version unknown");
 
     return TEST_PASS;
 }

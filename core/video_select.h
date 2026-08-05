@@ -42,6 +42,11 @@ typedef int (*video_key_source_fn)(void);
  * with PS/2 they are the mouse. Call before the boot window. */
 void video_select_no_console(void);
 
+/* True when U was held during the boot window: the operator wants the
+ * UART console more than the PS/2 mouse on a board where the two share
+ * GP0/GP1. Only meaningful after video_select_boot_window(). */
+bool video_select_console_kept(void);
+
 void video_select_add_source(video_key_source_fn fn, const char *name);
 
 typedef enum {

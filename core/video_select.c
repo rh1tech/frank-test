@@ -109,9 +109,14 @@ static bool mode_supported(const frank_board_desc_t *b, frank_video_mode_t m) {
     }
 }
 
+static bool g_keep_console;
+
+bool video_select_console_kept(void) { return g_keep_console; }
+
 static void banner(const frank_board_desc_t *board, uint32_t ms) {
     printf("\n[video] %s: hold H=HDMI  V=VGA  C=composite  A=auto  (%u ms)\n",
            board ? board->name : "unknown", (unsigned)ms);
+    printf("[video] hold U to keep the UART console (no PS/2 mouse)\n");
     printf("[video] inputs: ");
     for (unsigned i = 0; i < g_source_count; i++)
         printf("%s%s", i ? ", " : "", g_sources[i].name);
@@ -150,6 +155,18 @@ void video_select_boot_window(const frank_board_desc_t *board,
             if (!g_sources[i].fn) continue;
             int c = g_sources[i].fn();
             if (c < 0) continue;
+            /* U is not a video choice and does not close the window:
+             * it asks that the PS/2 mouse be left alone so the console
+             * survives, and an operator may well want it *and* a mode.
+             * Hold both. */
+            if (c == 'u' || c == 'U') {
+                if (!g_keep_console) {
+                    g_keep_console = true;
+                    printf("[video] U: keeping the console; PS/2 mouse stays off\n");
+                }
+                continue;
+            }
+
             if (c == 'h' || c == 'H' || c == 'v' || c == 'V' ||
                 c == 'c' || c == 'C' || c == 'a' || c == 'A') {
                 key  = c;
