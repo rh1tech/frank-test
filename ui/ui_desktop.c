@@ -190,13 +190,11 @@ static void draw_state(ui_surface_t *s, int x, int y, const ui_test_row_t *r) {
  * layout having run out rather than as deliberate margin. Deriving it
  * from LIST_PAD means the two can no longer drift apart.
  *
- * Then rounded down to a whole number of rows. The window is the only
- * part of this layout free to be any height, and a content area that is
- * not a multiple of the row height has to end in either a band of bare
- * grey or a row sliced through the middle - and having tried both, the
- * sliced row is worse: it looks like a drawing fault rather than like a
- * list continuing. Taking the remainder off the height instead puts it
- * in the margin below, where it reads as margin. */
+ * Then rounded down to a whole number of plain rows, so the common case
+ * - every row the same height, nothing wrapped - ends exactly on a row
+ * boundary with nothing clipped. When a wrapped row makes that
+ * impossible the list simply runs past the bottom edge and is clipped
+ * there, which is what a scrolling list should look like. */
 #define LIST_CHROME (UI_TITLE_H + UI_WIN_PAD * 2 + 1)
 #define LIST_H_RAW  (UI_SCREEN_H - LIST_Y - LIST_PAD)
 #define LIST_ROWS   ((LIST_H_RAW - LIST_CHROME) / ROW_H)
@@ -344,27 +342,37 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
         const ui_test_row_t *r = &d->rows[idx];
 
         const int row_h = row_height(r, list_w);
+        const int left  = (cy + ch) - y;        /* room still to fill */
 
-        /* Whole rows only. The window's height is a multiple of the
-         * plain row height, so this leaves nothing behind in the usual
-         * case; a wrapped row can still leave a gap of up to a row, and
-         * a gap is better than a row cut through the middle. */
-        if (y + row_h > cy + ch) break;
+        /* Every row that starts inside the window is drawn, and clipped
+         * where it runs past the bottom. Nothing is refused for being
+         * too tall to finish.
+         *
+         * The alternative was tried and is worse. Whole rows only leaves
+         * a band of bare grey at the bottom while the scroll bar says
+         * there is more below, which reads as the list having ended
+         * rather than as it continuing past the edge. A row cut through
+         * the middle is what a scrolling list is supposed to look like. */
+        if (left <= 0) break;
 
         /* Remembered so hit-testing and scrolling use the geometry that
          * was actually drawn rather than a second copy of the sums. */
         if (s_geom.count < (int)(sizeof(s_geom.y) / sizeof(s_geom.y[0]))) {
             s_geom.y[s_geom.count] = y;
-            s_geom.h[s_geom.count] = row_h;
+            s_geom.h[s_geom.count] = (row_h < left) ? row_h : left;
             s_geom.count++;
         }
 
         /* Alternating row tint: a long list of identical rows is much
          * harder to track across than one with a rhythm. */
-        if (idx & 1) ui_fill(s, cx, y, list_w, row_h - 1, UI_GREY_1);
+        /* Clipped to what is left, so a part-drawn row tints only the
+         * part of it that is on screen. */
+        const int fill_h = (row_h - 1 < left) ? row_h - 1 : left;
+
+        if (idx & 1) ui_fill(s, cx, y, list_w, fill_h, UI_GREY_1);
 
         const bool sel = (idx == d->selected);
-        if (sel) ui_fill(s, cx, y, list_w, row_h - 1, UI_ACCENT_L);
+        if (sel) ui_fill(s, cx, y, list_w, fill_h, UI_ACCENT_L);
 
         /* No drop shadow on these: the 16x16 art is dense enough that a
          * one-pixel offset copy closes the gaps and turns a chip into a
@@ -424,7 +432,7 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
 
         draw_state(s, cx + list_w - 18, y + 2, r);
 
-        ui_hline(s, cx, y + row_h - 1, list_w, UI_GREY_2);
+        if (row_h <= left) ui_hline(s, cx, y + row_h - 1, list_w, UI_GREY_2);
         y += row_h;
     }
 

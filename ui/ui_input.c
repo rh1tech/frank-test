@@ -344,17 +344,7 @@ static int hid_getkey(void) {
             s_rep_key = UI_KEY_NONE;
         } else if (absolute_time_diff_us(get_absolute_time(), s_rep_next) <= 0) {
             s_rep_next = make_timeout_time_ms(REPEAT_RATE_MS);
-            /* Arm the repeat on a fresh press of a key that wants one. */
-    if (out != UI_KEY_NONE && repeatable(out)) {
-        for (int i = 0; i < 6; i++) {
-            const uint8_t kc = st.keycode[i];
-            if (kc && !was_down(kc)) { s_rep_kc = kc; break; }
-        }
-        s_rep_key  = out;
-        s_rep_next = make_timeout_time_ms(REPEAT_DELAY_MS);
-    }
-
-    memcpy(s_prev_keys, st.keycode, sizeof(s_prev_keys));
+            memcpy(s_prev_keys, st.keycode, sizeof(s_prev_keys));
             return s_rep_key;
         }
     }
@@ -389,6 +379,21 @@ static int hid_getkey(void) {
                 }
                 break;
         }
+    }
+
+    /* Arm the repeat on a fresh press of a key that wants one.
+     *
+     * This has to sit after the scan, where `out` is the key that was
+     * just pressed. It was written inside the repeat branch above, where
+     * `out` is always NONE - so the timer never started and no key ever
+     * repeated, which is exactly what it looked like from the outside. */
+    if (out != UI_KEY_NONE && repeatable(out)) {
+        for (int i = 0; i < 6; i++) {
+            const uint8_t kc = st.keycode[i];
+            if (kc && !was_down(kc)) { s_rep_kc = kc; break; }
+        }
+        s_rep_key  = out;
+        s_rep_next = make_timeout_time_ms(REPEAT_DELAY_MS);
     }
 
     memcpy(s_prev_keys, st.keycode, sizeof(s_prev_keys));
