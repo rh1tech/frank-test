@@ -46,6 +46,7 @@ bool ui_ps2_init(int kbd_clk, int mouse_clk);
 bool ui_ps2_keyboard_up(void);
 bool ui_ps2_mouse_up(void);
 int  ui_ps2_getkey(void);
+bool ui_ps2_key_down(uint8_t code, bool ext);
 void ui_ps2_task(void);
 bool ui_ps2_mouse_read(int *dx, int *dy, int *wheel, unsigned *buttons);
 #endif
@@ -266,6 +267,19 @@ static int console_getkey(void) {
             case 'D': return UI_KEY_LEFT;
             case 'H': return UI_KEY_HOME;
             case 'F': return UI_KEY_END;
+            /* F1 has three encodings in the wild and terminals disagree
+             * about which they send: ESC O P from xterm and most
+             * emulators, ESC [ 1 1 ~ from the VT220 lineage. Both are
+             * cheap to accept and rejecting one would make the help key
+             * work on some consoles and not others. */
+            case 'P': return UI_KEY_F1;
+            case '1': {
+                const int b1 = getchar_timeout_us(ESC_GAP_US);
+                if (b1 == '1') { getchar_timeout_us(ESC_GAP_US);
+                                 return UI_KEY_F1; }
+                if (b1 == '~') return UI_KEY_HOME;
+                return UI_KEY_NONE;
+            }
             case '5': getchar_timeout_us(ESC_GAP_US); return UI_KEY_PGUP;
             case '6': getchar_timeout_us(ESC_GAP_US); return UI_KEY_PGDN;
             default:  return UI_KEY_NONE;
@@ -288,7 +302,7 @@ static int console_getkey(void) {
  * same reports. */
 #define HID_MOD_ALT  (0x04u | 0x40u)   /* left | right */
 
-static uint8_t s_prev_keys[6];
+static uint8_t  s_prev_keys[6];
 
 static bool was_down(uint8_t kc) {
     for (int i = 0; i < 6; i++) if (s_prev_keys[i] == kc) return true;
@@ -332,6 +346,18 @@ static int hid_getkey(void) {
     usbhid_keyboard_state_t st;
     usbhid_get_keyboard_state(&st);
 
+    /* Count fresh presses here, at the top, rather than beside the
+     * decode below: the repeat path returns early, so a key pressed in
+     * the same report as a repeat tick would never have been counted.
+     * Every press is counted, including the ones the interface has no
+     * use for - the ports dialog is asking whether the port carries
+     * traffic at all, and a keyboard whose only working keys are F-keys
+     * must not read as silent. */
+    for (int i = 0; i < 6; i++) {
+        const uint8_t kc = st.keycode[i];
+        if (kc && !was_down(kc)) { ui_kbd_note_usb(kc); }
+    }
+
     int out = UI_KEY_NONE;
 
     /* A key still held from last time repeats once its timer comes up. */
@@ -365,6 +391,7 @@ static int hid_getkey(void) {
             case 0x4D: out = UI_KEY_END;   break;
             case 0x4B: out = UI_KEY_PGUP;  break;
             case 0x4E: out = UI_KEY_PGDN;  break;
+            case 0x3A: out = UI_KEY_F1;    break;
             default:
                 if (kc >= 0x04 && kc <= 0x1D) {           /* A..Z */
                     const char letter = (char)('A' + (kc - 0x04));
@@ -400,6 +427,48 @@ static int hid_getkey(void) {
     return out;
 }
 #endif
+
+/* Traffic counters and the held-key query.
+ *
+ * Outside the USB and PS/2 guards on purpose: the ports dialog and the
+ * key test are built on every image, and a board with one keyboard
+ * source still has to draw the panel that says the other is absent. */
+static uint32_t s_usb_events;
+static uint8_t  s_usb_last;
+
+void     ui_kbd_note_usb(uint8_t usage) { s_usb_events++; s_usb_last = usage; }
+uint32_t ui_usb_kbd_events(void)        { return s_usb_events; }
+uint8_t  ui_usb_kbd_last_usage(void)    { return s_usb_last; }
+
+bool ui_key_held(uint8_t usage, uint8_t ps2, bool ext) {
+#if UI_INPUT_USB_HID
+    if (usage) {
+        usbhid_keyboard_state_t st;
+        usbhid_get_keyboard_state(&st);
+
+        /* The modifiers are not in the keycode array - they are bits in
+         * a byte of their own, so shift and control would never light
+         * without this. Left and right are distinct usages and distinct
+         * bits, in the same order. */
+        static const uint8_t mod_usage[8] = {
+            0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7,
+        };
+        for (int i = 0; i < 8; i++)
+            if (mod_usage[i] == usage && (st.modifier & (1u << i))) return true;
+
+        for (int i = 0; i < 6; i++) if (st.keycode[i] == usage) return true;
+    }
+#else
+    (void)usage;
+#endif
+
+#if UI_INPUT_PS2
+    if (ps2 && ui_ps2_key_down(ps2, ext)) return true;
+#else
+    (void)ps2; (void)ext;
+#endif
+    return false;
+}
 
 int ui_input_getkey(void) {
 #if UI_INPUT_USB_HID

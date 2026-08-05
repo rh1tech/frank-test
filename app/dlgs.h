@@ -56,6 +56,13 @@ typedef struct {
 /* Loop the melody through left, right and centre until Esc or Stop. */
 void dlg_audio(const dlg_ctx_t *c, audio_src_t src);
 
+/* Every keyboard shortcut, on screen. F1, or the mark menu. */
+void dlg_help(const dlg_ctx_t *c);
+
+/* A keyboard on screen, lighting keys while they are held. Both the USB
+ * and PS/2 keyboards feed it. */
+void dlg_keys(const dlg_ctx_t *c);
+
 /* Live button display for both controller ports, until Esc or Stop. */
 void dlg_nespad(const dlg_ctx_t *c);
 

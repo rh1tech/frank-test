@@ -199,6 +199,7 @@ static const pinsig_entry_t sig_next[] = {
     .sd_dat0 = NC, .sd_cs = NC, .sd_clk = NC, .sd_cmd = NC, \
     .sd_dat1 = NC, .sd_dat2 = NC, \
     .i2s_data = NC, .i2s_clk_base = NC, .i2s_mclk = NC, \
+    .pcm_i2s_data = NC, .pcm_i2s_clk_base = NC, \
     .video_base = NC, \
     .psram_cs = NC, .psram_soft_sclk = NC, \
     .psram_soft_mosi = NC, .psram_soft_miso = NC, \
@@ -529,7 +530,7 @@ const frank_board_desc_t frank_board_table[] = {
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
     .caps = CAP_VIDEO_HDMI
           | CAP_PSRAM_QMI | CAP_SD | CAP_PS2 | CAP_GAMEPAD_NES
-          | CAP_AUDIO_I2S | CAP_I2C
+          | CAP_AUDIO_I2S | CAP_AUDIO_PCM5122 | CAP_I2C
           | CAP_USB_DEVICE | CAP_USB_HOST | CAP_LED_PLAIN,
     .pins = { PINS_NONE, PINS_UART01,
               /* SD is on SPI1: pins above GP29 have no SPI0 mapping. */
@@ -538,6 +539,12 @@ const frank_board_desc_t frank_board_table[] = {
               .pad_clk = 4, .pad_latch = 5, .pad_d1 = 7, .pad_d2 = 8,
               /* The onboard I2S pair, not the PCM5122 hat's. */
               .i2s_data = 10, .i2s_clk_base = 11, .i2s_mclk = NC,
+              /* The hat's, which are different pins entirely - data on
+               * GP21, BCK GP18, LRCK GP19, and no master clock at all.
+               * From SpeccyP's WS_ZERO2 board file, which drives this
+               * hat on this board and moves PS/2 to GP14/15 to make room
+               * for it - which is where this descriptor already has it. */
+              .pcm_i2s_data = 21, .pcm_i2s_clk_base = 18,
               /* I2C1 on GP2/GP3. It configures the PCM5122 on the audio
                * hat, which is why this board must NOT declare
                * CAP_AUDIO_CODEC_I2C: detection vetoes any board whose

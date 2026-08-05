@@ -30,6 +30,7 @@
 #include "psram_init.h"
 #include "frank_audio.h"
 #include "mem_test.h"
+#include "pcm5122.h"
 #include "pinsig.h"
 #include "registry.h"
 
@@ -217,6 +218,7 @@ static void gate_menus(void) {
         { AUDIO_SRC_PWM, CMD_AUDIO_PWM },
         { AUDIO_SRC_I2S, CMD_AUDIO_I2S },
         { AUDIO_SRC_TS,  CMD_AUDIO_TS  },
+        { AUDIO_SRC_PCM5122, CMD_AUDIO_PCM5122 },
     };
     for (unsigned i = 0; i < count_of(audio_cmds); i++)
         ui_desktop_set_cmd_enabled(audio_cmds[i].cmd,
@@ -663,12 +665,50 @@ static void do_command(int cmd) {
         case CMD_SHOW_SIG:      show_pin_signature(); break;
         case CMD_VIDEO_TESTCARD: show_test_card();   break;
 
-        case CMD_AUDIO_PWM: case CMD_AUDIO_I2S: case CMD_AUDIO_TS: {
+        case CMD_HELP: {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            dlg_help(&ctx);
+            redraw();
+            break;
+        }
+
+        case CMD_AUDIO_PWM: case CMD_AUDIO_I2S: case CMD_AUDIO_TS:
+        case CMD_AUDIO_PCM5122: {
+            /* The one audio path whose hardware is optional. The board
+             * declares that it can take the hat, not that one is fitted,
+             * so the menu item is always live - and without this the
+             * dialog opened and closed again immediately, which is
+             * indistinguishable from a menu item that does nothing. */
+            if (cmd == CMD_AUDIO_PCM5122) {
+                const frank_pins_t *p = &g_detect.board->pins;
+                if (p->i2c_sda == PIN_NC || p->i2c_scl == PIN_NC ||
+                    !pcm5122_detect((unsigned)p->i2c_sda,
+                                    (unsigned)p->i2c_scl)) {
+                    snprintf(g_dlg[0], sizeof(g_dlg[0]),
+                             "Nothing answered at 0x4C on the");
+                    snprintf(g_dlg[1], sizeof(g_dlg[1]),
+                             "I2C bus. Is the PCM5122 hat");
+                    snprintf(g_dlg[2], sizeof(g_dlg[2]),
+                             "fitted, and seated fully?");
+                    show_dialog("PCM5122", 3);
+                    break;
+                }
+            }
             const dlg_ctx_t ctx = { .detect = &g_detect,
                                     .paint_background = paint_desktop };
             dlg_audio(&ctx, cmd == CMD_AUDIO_PWM ? AUDIO_SRC_PWM
                           : cmd == CMD_AUDIO_I2S ? AUDIO_SRC_I2S
-                                                 : AUDIO_SRC_TS);
+                          : cmd == CMD_AUDIO_TS  ? AUDIO_SRC_TS
+                                                 : AUDIO_SRC_PCM5122);
+            redraw();
+            break;
+        }
+
+        case CMD_KEYS: {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            dlg_keys(&ctx);
             redraw();
             break;
         }
@@ -1231,7 +1271,13 @@ int main(void) {
         if (k != UI_KEY_NONE) {
             g_dirty = true;
 
-            if (k & UI_KEY_ALT) {
+            /* F1 before anything else, including an open menu: it is
+             * the one key whose whole job is working when the operator
+             * does not know what else does. */
+            if (k == UI_KEY_F1) {
+                g_menubar.open = -1; g_menubar.highlight = -1;
+                do_command(CMD_HELP);
+            } else if (k & UI_KEY_ALT) {
                 int m = ui_menubar_find_alt(&g_menubar, (char)(k & 0xFF));
                 if (m >= 0) {
                     g_menubar.open = (m == g_menubar.open) ? -1 : m;

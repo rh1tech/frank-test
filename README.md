@@ -43,7 +43,9 @@ the board. And it prints what it measured: clock rates, chip IDs, throughput,
 capacities. Not just a tick.
 
 The interface is a windowed desktop at 640×480 with HDMI, VGA and composite
-output, driven entirely from the keyboard.
+output, driven entirely from the keyboard. Where the output cannot carry it —
+composite, and PIO HDMI on the PiZero — it draws the same information as a text
+page instead of a shrunken copy of the desktop.
 
 ---
 
@@ -61,6 +63,7 @@ output, driven entirely from the keyboard.
 | FRANK Core 2 | RP2350B + RP2350A | Inter-processor link |
 | FRANK Core 2U | RP2350B + RP2350A | As Core 2, plus tape and a USB hub |
 | FRANK Next | RP2350B | TLV320 codec |
+| Waveshare RP2350-PiZero ("Z0pa") | RP2350B | HDMI on GP32-39, driven from the PIO; optional PCM5122 audio hat |
 
 An unidentified board still boots and draws the screen. It assumes only the
 conventions the whole fleet shares: video on GP12-19, microSD on GP4-7, I²S on
@@ -114,10 +117,18 @@ pointing device at all, so that is not a nicety.
 | arrows | Move within a menu or the test list |
 | `Enter` | Activate; on the list, run the selected test |
 | `Esc` | Close a menu or dialog |
+| `F1` | Every shortcut, on screen |
 | `S` | Set Board |
 | `A` | Run All |
 | `E` | Run Selected |
+| `Y` | Keyboard test |
 | `?` | Key help on the console |
+
+`F1` is the one to remember. It lists the rest, works with a menu open, and
+closes on any key. It matters most on the outputs that draw a text page: those
+render menus as a plain list with no column for the equivalents, so the bare
+letters existed there and nothing said so — on boards most likely to be driven
+from a keyboard with no mouse at all.
 
 Held arrows and PgUp/PgDn repeat. USB HID reports which keys are *down* rather
 than when they were pressed, so a held key used to produce exactly one keystroke —
@@ -177,13 +188,21 @@ image gets moved. A reset starts again from what the hardware says.
 
 ## Video
 
-Three backends, all 640×480, chosen at boot or from the Video menu.
+Four backends, all 640×480, chosen at boot or from the Video menu.
 
 | Mode | How | Notes |
 |---|---|---|
 | HDMI | HSTX, TMDS | Default. `clk_hstx` at 126 MHz |
+| HDMI | PIO, TMDS | For connectors HSTX cannot reach — see below |
 | VGA | HSTX, raw 8-lane | Same GP12-19 pins through the resistor ladder |
 | Composite | PIO software encoder | PAL/NTSC, 320×240 |
+
+HSTX is wired to GP12-19 on the RP2350 and nowhere else, which is fine for every
+FRANK board and wrong for the Waveshare PiZero, whose connector is on GP32-39.
+That board is served by a PIO HDMI driver instead, vendored from murmnes. Both
+backends claim the HDMI mode and each refuses the boards it cannot serve, so the
+descriptor's `video_base` is what decides — the HSTX path is better where it
+works and is tried first.
 
 Hold **H**, **V**, **C** or **A** (auto) during the two-second window at boot.
 Choosing from the Video menu instead reboots, because the boot path is the only
@@ -201,6 +220,12 @@ Composite does not get the desktop, and cannot. A composite line carries
 somewhere around 320 usable samples however you arrange the source, and 6-pixel
 type resampled to fit stops being type. It renders its own text page instead: 42
 columns by 30 rows at native resolution, same information, actually legible.
+
+The PIO HDMI path scans a 320×240 framebuffer doubled to 640×480, so it has the
+same problem and takes the same answer — the text page, 53 columns by 30 rows
+there. Menus, the board picker and every dialog are drawn on it, which they have
+to be: on those outputs there is nothing behind them, so an unidentified board
+would otherwise have no way to reach Set Board and no way to run anything.
 
 Menu items enable only when the board has the connector *and* this firmware has a
 backend for it. An enabled control that quietly falls back to something else is
@@ -320,20 +345,47 @@ business making. These are dialogs you drive yourself.
 
 ![Audio](screenshots/audio.png)
 
-PWM, TDA (I²S) and TurboSound. Each loops a short melody through left, right and
-centre, naming the channel while it plays. One steady tone cannot tell a working
+PWM, TDA (I²S), TurboSound and PCM5122. Each loops a short melody through left,
+right and centre, naming the channel while it plays. One steady tone cannot tell a working
 stereo path from a stuck LRCK. They all sound like success.
 
 *I hear it* and *Silent* record what you decide, and the answer goes into the
 saved report. Leaving with `Esc` records nothing, because closing a dialog is not
 a verdict and storing it as one would turn "did not check" into "does not work".
 
+**PCM5122** is the audio hat for the Waveshare PiZero, and the only audio path
+here whose hardware is optional. The board declares that it can take one, not
+that one is fitted, so the menu item is always live and the dialog says plainly
+when nothing answers at 0x4C rather than opening and closing again. The hat moves
+I²S to its own pins — data GP21, BCK GP18, LRCK GP19 — and needs its DAC
+configured over I²C first: it wires no master clock, so the PLL has to be
+referenced to the bit clock and the missing-SCK error ignored. Miss either and
+the part acknowledges every write and stays silent.
+
 On a board with an audio mux the dialog tells you which switch positions that
 source needs. The mux is a 4:1 selector rather than two enables, so setting both
 switches picks ground. That is silence, and it looks exactly like a dead
 amplifier.
 
-### PS/2 ports, `Tests` ▸ `PS/2 Ports`
+### Keyboard, `Tests` ▸ `Keyboard` (`Y`)
+
+A keyboard drawn on screen, each key turning green while it is held. Both a USB
+and a PS/2 keyboard feed it, and it does not distinguish them — the question is
+whether the key works.
+
+This is what a byte count cannot answer. A membrane with one dead row, a stuck
+key holding a line down, two keys wired to the same code: all of those produce a
+perfectly healthy byte count. Pressing every key and watching the right one
+answer is the only way to find them.
+
+The traffic counters sit underneath for a reason. A key that never lights has two
+explanations, and they separate them: no bytes at all is a dead port, bytes
+arriving with nothing lighting is a keyboard talking in codes this table does not
+have. There is no numeric pad and no F-row above `F1`, because plenty of
+keyboards do not have them and a key that cannot be pressed reads as a fault.
+`Esc` closes the dialog on *release*, since it has to light like every other key.
+
+### PS/2 ports, `Tests` ▸ `PS/2 Ports` (`K`)
 
 Press keys and move the mouse; the byte count climbs. The count is deliberately
 the raw one, taken before decoding, because a port carrying garbage is wired but
@@ -343,6 +395,12 @@ and nothing else has a keyboard that finished its self-test and a host that is n
 hearing keystrokes.
 
 Those connectors are a common cold-solder site, which is what this is for.
+
+A USB keyboard is counted too, on a line under both panels: key events and the
+last HID usage ID, alongside the PS/2 byte count. This check used to be PS/2 only,
+which made it useless on the boards whose only keyboard is USB — most of them
+now. HID gives usage IDs rather than scancodes, so there is no second byte stream
+to show; the useful comparison is against the numbers above it.
 
 The mouse panel names *why* it is off when it is — no pins on this board, or the
 console holding GP0/GP1 — because those send you to completely different places.
@@ -435,8 +493,9 @@ One track would change that: routing the last register's `QH'` to a spare GPIO
 would make everything up to the AY pins testable.
 
 Whether a display is plugged in. No FRANK board wires hot-plug detect, so an
-absent monitor and a broken output look identical. *Video output* counts emitted
-frames and claims nothing more.
+absent monitor and a broken output look identical. *Video output* counts frames
+scanned out — from the video driver's own interrupt, not from the firmware asking
+for a repaint — and claims nothing more.
 
 Switch positions. Every board has switches the firmware cannot read, and they are
 listed in *Manual Steps*. The one exception is the tape DIP, which does not
@@ -525,6 +584,7 @@ ui/           4 bpp drawing, windows, menus, icons, video backends
 tests/        one file per subsystem under test
 common/       the inter-processor link stack, shared with the core2 firmware
 drivers/      vendored hardware drivers (see Attribution)
+              hdmi_pio/ the PIO HDMI backend, pcm5122/ the audio hat's DAC
 boards/       Pico SDK board headers for each FRANK variant
 slave/        the link peer firmware
 screenshots/  captured over HDMI from real hardware
@@ -562,6 +622,8 @@ top.
 | NES/SNES gamepad PIO reader (`drivers/nespad`) | [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) | shuichitakano, fhoedemakers (MIT) |
 | SD CID/CSD decode and manufacturer table (`tests/tests_sd.c`) | [SpeccyP](https://github.com/billgilbert7000/SpeccyP), `drivers/pico_fatfs/tf_card.c` | Constantin (billgilbert7000) and contributors |
 | FatFs (`drivers/fatfs`) | [elm-chan.org](http://elm-chan.org/fsw/ff/) | ChaN (BSD-style) |
+| PIO HDMI driver (`drivers/hdmi_pio`) | [murmnes](https://github.com/rh1tech/murmnes) | Mikhail Matveev, after the Murmulator lineage |
+| PCM5122 DAC bring-up (`drivers/pcm5122`) | [SpeccyP](https://github.com/billgilbert7000/SpeccyP), `drivers/pcm5122` | Constantin (billgilbert7000) and contributors |
 | I²S audio PIO (`drivers/audio_i2s.pio`) | Raspberry Pi Pico examples lineage | |
 | USB HID host, XInput (`drivers/usbhid`) | TinyUSB and contributors | |
 | HSTX VGA register configuration | DispHSTX | Miroslav Nemecek |

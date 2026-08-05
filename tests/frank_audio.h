@@ -34,6 +34,7 @@ typedef enum {
     AUDIO_SRC_PWM = 0,
     AUDIO_SRC_I2S,
     AUDIO_SRC_TS,
+    AUDIO_SRC_PCM5122,
     AUDIO_SRC_COUNT
 } audio_src_t;
 

@@ -53,6 +53,7 @@
 #include "ui_gfx.h"
 #include "ui_input.h"
 #include "ui_video.h"
+#include "ui_textpage.h"
 #include "ui_window.h"
 
 #include "pico/stdlib.h"
@@ -81,9 +82,31 @@ static void hms(uint32_t secs, char *out, unsigned len) {
              (unsigned long)(secs % 60u));
 }
 
+/* The same window for the text-page outputs, which do not scan the
+ * surface this draws into - see ui_textpage_modal(). */
+static char s_tp[3][40];
+static const char *s_tp_lines[3];
+
+static void publish_textpage(const burn_t *b, const registry_results_t *r,
+                             int running_row) {
+    char t[24];
+    hms((uint32_t)(absolute_time_diff_us(b->started, get_absolute_time())
+                   / 1000000), t, sizeof(t));
+
+    snprintf(s_tp[0], sizeof(s_tp[0]), "Cycle %u, running %s", b->cycles, t);
+    snprintf(s_tp[1], sizeof(s_tp[1]), "Failures so far: %u", b->fail_total);
+    snprintf(s_tp[2], sizeof(s_tp[2]), "Now: %s",
+             (running_row >= 0 && running_row < (int)r->count)
+                 ? r->rows[running_row].name : "-");
+
+    for (int i = 0; i < 3; i++) s_tp_lines[i] = s_tp[i];
+    ui_textpage_modal("Burn-in", s_tp_lines, 3, -1, "Esc stops after this test");
+}
+
 static void draw(const dlg_ctx_t *c, const burn_t *b,
                  const registry_results_t *r, int running_row) {
     ui_surface_t *s = ui_video_surface();
+    publish_textpage(b, r, running_row);
     c->paint_background();
 
     const int h = UI_TITLE_H + UI_WIN_PAD + DLG_TOP + 30 + LIST_H
@@ -231,6 +254,8 @@ void dlg_burnin(const dlg_ctx_t *c, registry_results_t *r) {
             draw(c, &b, r, -1);
         }
     }
+
+    ui_textpage_modal_clear();
 
     const uint32_t secs =
         (uint32_t)(absolute_time_diff_us(b.started, get_absolute_time()) / 1000000);

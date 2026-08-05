@@ -29,6 +29,7 @@
 #include "ui_icons.h"
 #include "ui_input.h"
 #include "ui_video.h"
+#include "ui_textpage.h"
 #include "ui_window.h"
 
 #include "pico/stdlib.h"
@@ -96,8 +97,41 @@ static bool poll_abort(void) {
     return s_abort;
 }
 
+/* The same window, for the outputs that show a page of text rather than
+ * the desktop - composite, and the PiZero's PIO HDMI. Those backends do
+ * not scan the surface everything below draws into, so without this the
+ * melody played with the results list still on screen and no sign of
+ * where the Stop button was or which keys answered. Reported exactly
+ * that way: "it works, but how do I stop it?"
+ *
+ * Static because the page borrows these rather than copying them. */
+static char s_tp_title[32], s_tp_line[3][40];
+static const char *s_tp_lines[3];
+
+static void publish_textpage(const dlg_ctx_t *c, audio_src_t src, int ch,
+                             unsigned laps) {
+    const char *hint = audio_src_switch_hint(c->detect, src);
+
+    snprintf(s_tp_title, sizeof(s_tp_title), "Audio - %s",
+             audio_src_name(src));
+    snprintf(s_tp_line[0], sizeof(s_tp_line[0]), "Playing: %s channel",
+             audio_channel_name(ch));
+    snprintf(s_tp_line[1], sizeof(s_tp_line[1]), "Passes: %u", laps);
+
+    int n = 2;
+    if (hint) {
+        snprintf(s_tp_line[2], sizeof(s_tp_line[2]), "%s", hint);
+        n = 3;
+    }
+    for (int i = 0; i < n; i++) s_tp_lines[i] = s_tp_line[i];
+
+    ui_textpage_modal(s_tp_title, s_tp_lines, n, -1,
+                      "Y heard it   N silent   Esc stop");
+}
+
 static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
     ui_surface_t *s = ui_video_surface();
+    publish_textpage(c, src, ch, laps);
     c->paint_background();
 
     const char *hint = audio_src_switch_hint(c->detect, src);
@@ -225,6 +259,7 @@ void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
     }
 
     audio_stop(c->detect, src);
+    ui_textpage_modal_clear();
 
     /* Only recorded when they actually said something. Closing the
      * dialog is not a verdict, and storing it as one would turn "did not
@@ -234,6 +269,7 @@ void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
             [AUDIO_SRC_PWM] = ATTEST_AUDIO_PWM,
             [AUDIO_SRC_I2S] = ATTEST_AUDIO_I2S,
             [AUDIO_SRC_TS]  = ATTEST_AUDIO_TS,
+            [AUDIO_SRC_PCM5122] = ATTEST_AUDIO_PCM5122,
         };
         attest_set(subj[src], s_answer);
     }

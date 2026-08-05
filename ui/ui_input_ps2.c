@@ -99,6 +99,20 @@ static volatile uint8_t  s_kbd_last;
 uint32_t ui_ps2_kbd_bytes(void)   { return s_kbd_bytes; }
 uint8_t  ui_ps2_kbd_last_byte(void) { return s_kbd_last; }
 
+/* Which keys are physically down.
+ *
+ * The queue reports presses and throws the rest away, which is all a
+ * menu needs and not enough to light a key on screen while it is held.
+ * A make sets the bit, a break clears it. Extended codes get their own
+ * bitmap because 0xE0 0x75 and 0x75 are different keys sharing a number
+ * - cursor up and keypad 8 - and one bitmap would light both. */
+static uint8_t s_down[32], s_down_ext[32];
+
+bool ui_ps2_key_down(uint8_t code, bool ext) {
+    const uint8_t *map = ext ? s_down_ext : s_down;
+    return (map[code >> 3] & (uint8_t)(1u << (code & 7u))) != 0;
+}
+
 static bool s_break;      /* 0xF0 seen: the next code is a key release  */
 static bool s_ext;        /* 0xE0 seen: the next code is an extended key */
 static bool s_shift, s_ctrl, s_alt;
@@ -145,6 +159,13 @@ int ui_ps2_getkey(void) {
         s_break = false;
         s_ext   = false;
 
+        {
+            uint8_t *map = ext ? s_down_ext : s_down;
+            const uint8_t bit = (uint8_t)(1u << (b & 7u));
+            if (released) map[b >> 3] &= (uint8_t)~bit;
+            else          map[b >> 3] |= bit;
+        }
+
         /* Modifiers are state, not keystrokes. */
         switch (b) {
             case 0x12: case 0x59: s_shift = !released; continue;  /* shift */
@@ -173,6 +194,7 @@ int ui_ps2_getkey(void) {
         switch (b) {
             case 0x5A: return UI_KEY_ENTER;
             case 0x76: return UI_KEY_ESC;
+            case 0x05: return UI_KEY_F1;
             case 0x0D: return UI_KEY_TAB;
             case 0x66: return 0x08;           /* backspace */
             default: break;

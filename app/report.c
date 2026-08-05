@@ -189,6 +189,7 @@ report_result_t report_write(const detect_result_t *d,
         { ATTEST_AUDIO_PWM, "audio PWM"  },
         { ATTEST_AUDIO_I2S, "audio I2S"  },
         { ATTEST_AUDIO_TS,  "TurboSound" },
+        { ATTEST_AUDIO_PCM5122, "PCM5122 hat" },
     };
     for (unsigned i = 0; i < sizeof(att) / sizeof(att[0]); i++) {
         const attest_t v = attest_get(att[i].s);

@@ -98,10 +98,34 @@ enum {
     UI_KEY_END,
     UI_KEY_PGUP,
     UI_KEY_PGDN,
+    UI_KEY_F1,
 
     /* Alt+letter, as UI_KEY_ALT | 'F'. The letter is upper-cased. */
     UI_KEY_ALT   = 0x200,
 };
+
+/* Is this key physically down right now?
+ *
+ * Keystrokes are the wrong shape for an on-screen keyboard: it has to
+ * light a key while it is held and unlight it on release, and the queue
+ * only ever says "something was pressed". Both sources can answer this -
+ * USB HID reports the six keys currently down, PS/2 sends a make and a
+ * break - so it is asked in each source's own codes rather than through
+ * a translation table that would need a third set of names.
+ *
+ *   usage    HID usage ID, for a USB keyboard
+ *   ps2      set 2 scancode, for a PS/2 keyboard
+ *   ext      the scancode is prefixed with 0xE0
+ *
+ * Pass 0 for a code a key does not have. */
+bool ui_key_held(uint8_t usage, uint8_t ps2, bool ext);
+
+/* Raw traffic counters, for the ports dialog. The USB pair is the
+ * counterpart of ui_ps2_kbd_bytes(): a keyboard that enumerates and then
+ * sends nothing looks identical to an empty socket without them. */
+void     ui_kbd_note_usb(uint8_t usage);
+uint32_t ui_usb_kbd_events(void);
+uint8_t  ui_usb_kbd_last_usage(void);
 
 /* Next key, or UI_KEY_NONE. Merges every source: USB HID keyboard, PS/2
  * keyboard, and the console. One queue, because the caller genuinely does

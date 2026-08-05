@@ -124,6 +124,16 @@ typedef uint64_t frank_caps_t;
 #define CAP_LED_PLAIN            (1ull << 29)
 #define CAP_DIPSWITCH            (1ull << 30)
 
+/* This board can take the PCM5122 audio hat.
+ *
+ * Deliberately not CAP_AUDIO_CODEC_I2C, which means a codec is soldered
+ * to the board and which detection vetoes a board for claiming when
+ * nothing answers on the bus. The hat is an accessory: most units do not
+ * have one fitted, and claiming it as present ruled Z0pa out of its own
+ * identification. This says only that the connector and the pins exist,
+ * which is true whether or not anything is plugged into them. */
+#define CAP_AUDIO_PCM5122        (1ull << 31)
+
 /* Any video output at all — convenience mask, not a bit of its own. */
 #define CAP_VIDEO_ANY  (CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE)
 

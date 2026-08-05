@@ -56,6 +56,7 @@
 #include "ui_gfx.h"
 #include "ui_input.h"
 #include "ui_video.h"
+#include "ui_textpage.h"
 #include "ui_window.h"
 
 #include "pico/stdlib.h"
@@ -102,12 +103,41 @@ static void pip(ui_surface_t *s, int x, int y, const char *label, bool down) {
     ui_text(s, x + 7, y + 3, label, down ? UI_PAPER : UI_GREY_4);
 }
 
+/* The text-page version - see ui_textpage_modal(). Raw byte counts, for
+ * the same reason the panels show them: a port carrying garbage is wired
+ * and wrong, and looks identical to a dead one if you only watch keys. */
+static char s_tp[3][40];
+static const char *s_tp_lines[3];
+
+static void publish_textpage(const ms_state_t *m, bool mouse_live) {
+    if (ui_ps2_keyboard_up())
+        snprintf(s_tp[0], sizeof(s_tp[0]), "Keyboard: %lu bytes, last 0x%02X",
+                 (unsigned long)ui_ps2_kbd_bytes(), ui_ps2_kbd_last_byte());
+    else
+        snprintf(s_tp[0], sizeof(s_tp[0]), "Keyboard: no pins on this board");
+
+    if (mouse_live)
+        snprintf(s_tp[1], sizeof(s_tp[1]), "Mouse: %lu packets, buttons %u",
+                 (unsigned long)m->packets, m->buttons);
+    else
+        snprintf(s_tp[1], sizeof(s_tp[1]), "Mouse: not running");
+
+    snprintf(s_tp[2], sizeof(s_tp[2]), "USB kbd: %lu keys, last 0x%02X",
+             (unsigned long)ui_usb_kbd_events(), ui_usb_kbd_last_usage());
+
+    for (int i = 0; i < 3; i++) s_tp_lines[i] = s_tp[i];
+    ui_textpage_modal("PS/2 Ports", s_tp_lines, 3, -1,
+                      "type, or move the mouse   Esc closes");
+}
+
 static void draw(const dlg_ctx_t *c, const ms_state_t *m, bool mouse_live,
                  const char *mouse_why) {
     ui_surface_t *s = ui_video_surface();
+    publish_textpage(m, mouse_live);
     c->paint_background();
 
-    const int h = UI_TITLE_H + UI_WIN_PAD + DLG_TOP + 14 + PANEL_H
+    /* +34 for the USB line and its hint below the panels. */
+    const int h = UI_TITLE_H + UI_WIN_PAD + DLG_TOP + 14 + PANEL_H + 34
                 + DLG_FOOT + 18 + DLG_BOT + UI_WIN_PAD;
     const int x = (s->w - DLG_W) / 2;
     const int y = (s->h - h) / 2 - 20;
@@ -123,7 +153,7 @@ static void draw(const dlg_ctx_t *c, const ms_state_t *m, bool mouse_live,
     ui_window_content(&win, &cx, &cy, &cw, &chh);
     cx += DLG_INSET; cw -= 2 * DLG_INSET; cy += DLG_TOP;
 
-    ui_text(s, cx, cy, "Press keys and move the mouse. Bytes should climb.",
+    ui_text(s, cx, cy, "Press keys and move the mouse. The counts should climb.",
             UI_GREY_5);
 
     const int py = cy + 14;
@@ -174,6 +204,30 @@ static void draw(const dlg_ctx_t *c, const ms_state_t *m, bool mouse_live,
             ui_text(s, mx + 6, py + 84, "move it, or press a button", UI_GREY_4);
         else
             ui_text(s, mx + 6, py + 84, "both axes should change", UI_GREY_5);
+    }
+
+    /* ---- USB, under both panels ----
+     *
+     * The scancode test was PS/2 only, which made it useless on the
+     * boards whose only keyboard is USB - and those are the majority
+     * now. Same question, same counters: a keyboard that enumerates and
+     * then sends nothing is a different fault from an empty socket, and
+     * without a count the two look alike.
+     *
+     * One line rather than a third panel: the interesting comparison is
+     * against the PS/2 numbers above, and HID gives usage IDs rather
+     * than scancodes, so there is no second byte stream to show. */
+    {
+        const uint32_t keys = ui_usb_kbd_events();
+        snprintf(line, sizeof(line), "USB keyboard:  %lu key%s, last usage 0x%02X",
+                 (unsigned long)keys, keys == 1 ? "" : "s",
+                 ui_usb_kbd_last_usage());
+        ui_text(s, cx, py + PANEL_H + 6, line, keys ? UI_BLACK : UI_GREY_4);
+
+        if (!keys)
+            ui_text(s, cx, py + PANEL_H + 20,
+                    "nothing yet - press a key on a USB keyboard, if one is fitted",
+                    UI_GREY_4);
     }
 
     ui_clip_reset(s);
@@ -265,4 +319,6 @@ void dlg_ps2(const dlg_ctx_t *c) {
 
         sleep_ms(8);
     }
+
+    ui_textpage_modal_clear();
 }

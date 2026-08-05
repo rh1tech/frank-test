@@ -52,6 +52,8 @@
 #include "frank_audio.h"
 #include "registry.h"
 
+#include "pcm5122.h"
+
 #include "audio_i2s.pio.h"
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
@@ -98,6 +100,7 @@ const char *audio_src_name(audio_src_t s) {
         case AUDIO_SRC_PWM: return "PWM";
         case AUDIO_SRC_I2S: return "TDA (I2S)";
         case AUDIO_SRC_TS:  return "TurboSound";
+        case AUDIO_SRC_PCM5122: return "PCM5122";
         default:            return "?";
     }
 }
@@ -107,6 +110,7 @@ uint32_t audio_src_cap(audio_src_t s) {
         case AUDIO_SRC_PWM: return CAP_AUDIO_MUX;
         case AUDIO_SRC_I2S: return CAP_AUDIO_I2S;
         case AUDIO_SRC_TS:  return CAP_TURBOSOUND;
+        case AUDIO_SRC_PCM5122: return CAP_AUDIO_PCM5122;
         default:            return 0;
     }
 }
@@ -163,10 +167,8 @@ static bool s_i2s_up;
  *
  * That was the "sound only plays once" bug: the first run set everything
  * up and worked, every run after it was silent. */
-static void i2s_reassert(const frank_pins_t *p) {
-    const uint pins[] = { (uint)p->i2s_data,
-                          (uint)p->i2s_clk_base,
-                          (uint)p->i2s_clk_base + 1 };
+static void i2s_reassert(uint data, uint clk_base) {
+    const uint pins[] = { data, clk_base, clk_base + 1 };
 
     pio_sm_set_enabled(s_pio, s_sm, false);
     pio_sm_clear_fifos(s_pio, s_sm);
@@ -180,9 +182,25 @@ static void i2s_reassert(const frank_pins_t *p) {
     pio_sm_set_enabled(s_pio, s_sm, true);
 }
 
-static bool i2s_bring_up(const frank_pins_t *p) {
-    if (s_i2s_up) { i2s_reassert(p); return true; }
-    if (p->i2s_data == PIN_NC || p->i2s_clk_base == PIN_NC) return false;
+/* Which pair the state machine is currently driving.
+ *
+ * There are two on a board carrying the audio hat - the onboard pins and
+ * the hat's, which are different pins entirely - and one state machine
+ * between them. Re-asserting the pads is enough when the pair has not
+ * changed and is exactly wrong when it has: the program would keep
+ * clocking the pins it was configured with while the caller believed it
+ * had switched, which is silence with nothing to explain it. */
+static int s_up_data = -1, s_up_clk = -1;
+
+static bool i2s_bring_up(int data_pin, int clk_pin) {
+    if (data_pin == PIN_NC || clk_pin == PIN_NC) return false;
+
+    const uint data = (uint)data_pin, clk_base = (uint)clk_pin;
+
+    if (s_i2s_up && s_up_data == data_pin && s_up_clk == clk_pin) {
+        i2s_reassert(data, clk_base);
+        return true;
+    }
 
     static bool s_claimed;
     static uint s_off;
@@ -202,9 +220,7 @@ static bool i2s_bring_up(const frank_pins_t *p) {
      * inside i2s_init(). Dropping these calls is why, once, the FIFO
      * drained happily, the probe reported ok, and absolutely nothing
      * reached the DAC: the pads never left SIO mode. */
-    const uint pins[] = { (uint)p->i2s_data,
-                          (uint)p->i2s_clk_base,
-                          (uint)p->i2s_clk_base + 1 };
+    const uint pins[] = { data, clk_base, clk_base + 1 };
     for (unsigned i = 0; i < count_of(pins); i++) {
         pio_gpio_init(s_pio, pins[i]);
         gpio_set_drive_strength(pins[i], GPIO_DRIVE_STRENGTH_12MA);
@@ -213,8 +229,7 @@ static bool i2s_bring_up(const frank_pins_t *p) {
     /* The program only ever gets added once — re-adding it on every
      * source switch would exhaust the 32-instruction store after a
      * handful of trips through the Audio menu. */
-    audio_i2s_program_init(s_pio, s_sm, s_off,
-                           (uint)p->i2s_data, (uint)p->i2s_clk_base);
+    audio_i2s_program_init(s_pio, s_sm, s_off, data, clk_base);
 
     /* 32 bits per stereo frame x 2 PIO cycles per bit, in 8.8 fixed
      * point — the same arithmetic the driver does. */
@@ -222,7 +237,9 @@ static bool i2s_bring_up(const frank_pins_t *p) {
     pio_sm_set_clkdiv_int_frac(s_pio, s_sm, div >> 8u, div & 0xFFu);
     pio_sm_set_enabled(s_pio, s_sm, true);
 
-    s_i2s_up = true;
+    s_i2s_up  = true;
+    s_up_data = data_pin;
+    s_up_clk  = clk_pin;
     return true;
 }
 
@@ -267,8 +284,9 @@ static bool i2s_tone(uint32_t hz, bool left, bool right, uint32_t ms,
     return true;
 }
 
-static bool i2s_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
-    if (!i2s_bring_up(pins)) return false;
+static bool i2s_pass_on(int data_pin, int clk_pin, int ch,
+                        bool (*abort_fn)(void)) {
+    if (!i2s_bring_up(data_pin, clk_pin)) return false;
 
     for (unsigned n = 0; n < MELODY_LEN; n++) {
         if (abort_fn && abort_fn()) return false;
@@ -285,6 +303,26 @@ static bool i2s_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
         }
     }
     return true;
+}
+
+/* The hat: configure the DAC over I2C, then play the same melody out of
+ * the pins it listens on.
+ *
+ * The I2C setup is the whole difference between this and the I2S source
+ * above. The DAC comes out of reset muted and in standby, waiting for a
+ * master clock the hat does not wire, so without it the state machine
+ * clocks a perfectly good signal into a part that is not listening -
+ * which is silence with every pin doing exactly what it should.
+ *
+ * Reconfigured on every pass rather than once. The hat can be plugged in
+ * while this dialog is looping, which is a reasonable thing for an
+ * operator to try, and it costs nine register writes. */
+static bool pcm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
+    if (pins->i2c_sda == PIN_NC || pins->i2c_scl == PIN_NC) return false;
+    if (!pcm5122_init((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl))
+        return false;
+
+    return i2s_pass_on(pins->pcm_i2s_data, pins->pcm_i2s_clk_base, ch, abort_fn);
 }
 
 /* Sleep, but let the interface breathe.
@@ -552,9 +590,11 @@ bool audio_play(const detect_result_t *d, audio_src_t s, int ch,
 
     const frank_pins_t *pins = &d->board->pins;
     switch (s) {
-        case AUDIO_SRC_I2S: return i2s_pass(pins, ch, abort_fn);
+        case AUDIO_SRC_I2S:
+            return i2s_pass_on(pins->i2s_data, pins->i2s_clk_base, ch, abort_fn);
         case AUDIO_SRC_PWM: return pwm_pass(pins, ch, abort_fn);
         case AUDIO_SRC_TS:  return ts_pass(pins, ch, abort_fn);
+        case AUDIO_SRC_PCM5122: return pcm_pass(pins, ch, abort_fn);
         default:            return false;
     }
 }
@@ -572,6 +612,18 @@ void audio_stop(const detect_result_t *d, audio_src_t s) {
             break;
         case AUDIO_SRC_PWM:
             pwm_quiet(pins);
+            break;
+        case AUDIO_SRC_PCM5122:
+            /* Stop the clocks first, then mute the DAC. The other way
+             * round leaves the part unmuted for as long as the I2C
+             * writes take, holding whatever level the last sample had -
+             * which is the click at the end of every pass. */
+            if (s_i2s_up) {
+                pio_sm_set_enabled(s_pio, s_sm, false);
+                pio_sm_clear_fifos(s_pio, s_sm);
+            }
+            if (pins->i2c_sda != PIN_NC && pins->i2c_scl != PIN_NC)
+                pcm5122_quiet((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl);
             break;
         case AUDIO_SRC_TS:
             if (ay_claim(pins)) {

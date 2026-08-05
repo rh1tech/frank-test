@@ -34,6 +34,7 @@
 static ui_menu_item_t mark_items[] = {
     { "About FRANK Test...", 0,   true, false, CMD_ABOUT },
     { NULL,                  0,   true, false, CMD_NONE },
+    { "Keyboard Shortcuts",  0,   true, false, CMD_HELP },
     { "Board Info...",       'I', true, false, CMD_BOARD_INFO },
     { "Pin Signature...",    0,   true, false, CMD_SHOW_SIG },
 };
@@ -85,6 +86,7 @@ static ui_menu_item_t audio_items[] = {
     { "PWM",                 'P', false, false, CMD_AUDIO_PWM },
     { "TDA (I2S)",           '2', false, false, CMD_AUDIO_I2S },
     { "TurboSound",          'U', false, false, CMD_AUDIO_TS },
+    { "PCM5122",             'M', false, false, CMD_AUDIO_PCM5122 },
 };
 
 static ui_menu_item_t tests_items[] = {
@@ -93,18 +95,26 @@ static ui_menu_item_t tests_items[] = {
     { "Burn-in...",          0,   true,  false, CMD_BURNIN },
     { NULL,                  0,   true,  false, CMD_NONE },
     { "NES Gamepad(s)...",   'G', false, false, CMD_NESPAD },
-    { "PS/2 Ports...",       'P', false, false, CMD_PS2 },
+    /* K, not P: bare letters are resolved by scanning the menus in
+     * order, Audio comes before Tests, and Audio's PWM item already has
+     * P - so this one could never be reached by its own key. Nobody
+     * noticed because nothing listed the shortcuts until F1. */
+    { "PS/2 Ports...",       'K', false, false, CMD_PS2 },
+    { "Keyboard...",         'Y', true,  false, CMD_KEYS },
     { "LEDs...",             'L', false, false, CMD_LED },
     { "Tape In...",          'N', false, false, CMD_TAPE },
 };
 
+/* The counts here are the length of each item array and nothing else.
+ * Getting one wrong silently truncates a menu - the PCM5122 item existed,
+ * was enabled, and simply did not appear, because this said three. */
 static const ui_menu_t menus[] = {
-    { "",        mark_items,   4, true,  'A' },
+    { "",        mark_items,   5, true,  'A' },
     { "File",    file_items,   6, false, 'F' },
     { "Board",   board_items,  1, false, 'B' },
     { "Video",   video_items,  7, false, 'V' },
-    { "Audio",   audio_items,  3, false, 'U' },
-    { "Tests",   tests_items,  8, false, 'T' },
+    { "Audio",   audio_items,  4, false, 'U' },
+    { "Tests",   tests_items,  9, false, 'T' },
 };
 
 static const ui_menubar_t default_bar = {

@@ -54,6 +54,7 @@
 #include "ui_gfx.h"
 #include "ui_input.h"
 #include "ui_video.h"
+#include "ui_textpage.h"
 #include "ui_window.h"
 
 #include "hardware/vreg.h"
@@ -108,8 +109,28 @@ static int index_of8(const uint8_t *arr, int n, uint8_t v) {
 
 typedef struct { int cpu, vreg, psram, flash; } sel_t;
 
+/* The text-page version - see ui_textpage_modal(). The only dialog here
+ * the operator changes values in rather than watches, so this is the one
+ * that needs the selected row marked: without it the arrow keys move
+ * something invisible. */
+static char s_tp[4][40];
+static const char *s_tp_lines[4];
+
+static void publish_textpage(const sel_t *sel, int row) {
+    snprintf(s_tp[0], sizeof(s_tp[0]), "System clock   %u MHz", CPU[sel->cpu]);
+    snprintf(s_tp[1], sizeof(s_tp[1]), "Core voltage   %s",
+             vreg_text(VREG[sel->vreg]));
+    snprintf(s_tp[2], sizeof(s_tp[2]), "PSRAM ceiling  %u MHz", PSRAM[sel->psram]);
+    snprintf(s_tp[3], sizeof(s_tp[3]), "Flash ceiling  %u MHz", FLASH[sel->flash]);
+
+    for (int i = 0; i < 4; i++) s_tp_lines[i] = s_tp[i];
+    ui_textpage_modal("Clocks and Voltage", s_tp_lines, 4, row,
+                      "arrows change   Enter restart   Esc cancel");
+}
+
 static void draw(const dlg_ctx_t *c, const sel_t *sel, int row) {
     ui_surface_t *s = ui_video_surface();
+    publish_textpage(sel, row);
     c->paint_background();
 
     const int h = UI_TITLE_H + UI_WIN_PAD + DLG_TOP + 30 + ROW_H * 4 + 42
@@ -270,4 +291,6 @@ void dlg_overclock(const dlg_ctx_t *c) {
 
         sleep_ms(8);
     }
+
+    ui_textpage_modal_clear();
 }

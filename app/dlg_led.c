@@ -64,6 +64,7 @@
 #include "ui_gfx.h"
 #include "ui_input.h"
 #include "ui_video.h"
+#include "ui_textpage.h"
 #include "ui_window.h"
 
 #include "hardware/clocks.h"
@@ -134,10 +135,38 @@ static uint32_t hue_grb(unsigned hue, unsigned level) {
 /* Which half of the sequence is running. */
 typedef enum { PH_BLINK, PH_FADE } phase_t;
 
+/* The text-page version - see ui_textpage_modal(). */
+static char s_tp[3][40];
+static const char *s_tp_lines[3];
+
+static void publish_textpage(phase_t phase, bool have_plain, bool plain_on,
+                             bool have_rgb, unsigned hue, unsigned level,
+                             int plain_pin, int rgb_pin) {
+    snprintf(s_tp[0], sizeof(s_tp[0]), "Now: %s",
+             phase == PH_BLINK ? "blinking the plain LED"
+                               : "fading the WS2812");
+    if (have_plain)
+        snprintf(s_tp[1], sizeof(s_tp[1]), "Plain LED GP%d: %s",
+                 plain_pin, plain_on ? "on" : "off");
+    else
+        snprintf(s_tp[1], sizeof(s_tp[1]), "Plain LED: not fitted");
+
+    if (have_rgb)
+        snprintf(s_tp[2], sizeof(s_tp[2]), "WS2812 GP%d: hue %u, level %u",
+                 rgb_pin, hue, level);
+    else
+        snprintf(s_tp[2], sizeof(s_tp[2]), "WS2812: not fitted");
+
+    for (int i = 0; i < 3; i++) s_tp_lines[i] = s_tp[i];
+    ui_textpage_modal("LEDs", s_tp_lines, 3, -1, "Esc closes");
+}
+
 static void draw(const dlg_ctx_t *c, phase_t phase, bool have_plain,
                  bool plain_on, bool have_rgb, unsigned hue, unsigned level,
                  int plain_pin, int rgb_pin) {
     ui_surface_t *s = ui_video_surface();
+    publish_textpage(phase, have_plain, plain_on, have_rgb, hue, level,
+                     plain_pin, rgb_pin);
     c->paint_background();
 
     const int content_h = 14 + SWATCH + 34;
@@ -325,4 +354,6 @@ void dlg_led(const dlg_ctx_t *c) {
      * small lie about its state. */
     if (have_plain) gpio_put((uint)p->led_plain, 0);
     if (have_rgb)   ws2812_send((uint)p->led_ws2812, 0u, hz);
+
+    ui_textpage_modal_clear();
 }

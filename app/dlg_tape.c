@@ -59,6 +59,7 @@
 #include "ui_icons.h"
 #include "ui_input.h"
 #include "ui_video.h"
+#include "ui_textpage.h"
 #include "ui_window.h"
 
 #include "hardware/gpio.h"
@@ -289,9 +290,31 @@ static void draw_stripes(ui_surface_t *s, int x, int y, int w, int h,
     if (cy > y) ui_fill(s, x, y, w, cy - y, UI_BLACK);
 }
 
+/* The text-page version - see ui_textpage_modal(). */
+static char s_tp[3][40];
+static const char *s_tp_lines[3];
+
+static void publish_textpage(const tape_window_t *w, tape_kind_t kind,
+                             uint32_t total_edges, uint pin) {
+    snprintf(s_tp[0], sizeof(s_tp[0]), "GP%u: %s, idles %s", pin,
+             kind_name(kind), w->level ? "high" : "low");
+    snprintf(s_tp[1], sizeof(s_tp[1]), "Edges: %lu in window, %lu total",
+             (unsigned long)w->edges, (unsigned long)total_edges);
+    if (w->mean_us)
+        snprintf(s_tp[2], sizeof(s_tp[2]), "Half-period: %lu us (%lu-%lu)",
+                 (unsigned long)w->mean_us, (unsigned long)w->shortest_us,
+                 (unsigned long)w->longest_us);
+    else
+        snprintf(s_tp[2], sizeof(s_tp[2]), "Half-period: nothing moving");
+
+    for (int i = 0; i < 3; i++) s_tp_lines[i] = s_tp[i];
+    ui_textpage_modal("Tape In", s_tp_lines, 3, -1, "play a tape   Esc closes");
+}
+
 static void draw(const dlg_ctx_t *c, const tape_window_t *w, tape_kind_t kind,
                  uint32_t total_edges, const char *note, uint pin) {
     ui_surface_t *s = ui_video_surface();
+    publish_textpage(w, kind, total_edges, pin);
     c->paint_background();
 
     const int note_h    = note[0] ? 24 : 0;
@@ -440,5 +463,6 @@ void dlg_tape(const dlg_ctx_t *c) {
     }
 
     gpio_set_function(pin, was);
+    ui_textpage_modal_clear();
     printf("[tape] stopped, %u edges total\n", (unsigned)total);
 }

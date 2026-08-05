@@ -44,6 +44,8 @@ add_executable(frank-test
     report.c
     dlg_burnin.c
     dlg_overclock.c
+    dlg_help.c
+    dlg_keys.c
     dlg_led.c
     dlg_ps2.c
     dlg_tape.c
@@ -59,6 +61,7 @@ add_executable(frank-test
 
     # PIO HDMI, for the boards HSTX cannot reach. Vendored from murmnes,
     # which already drives the Waveshare PiZero this is here for.
+    ${FW_ROOT}/drivers/pcm5122/pcm5122.c
     ${FW_ROOT}/drivers/hdmi_pio/hdmi.c
     ${FW_ROOT}/drivers/hdmi_pio/hdmi_scanline.S
     ${FW_ROOT}/tests/tests_memory.c
@@ -119,6 +122,7 @@ target_include_directories(frank-test PRIVATE
     ${FW_ROOT}/drivers/tv
     ${FW_ROOT}/drivers/fatfs
     ${FW_ROOT}/drivers/hdmi_pio
+    ${FW_ROOT}/drivers/pcm5122
     ${FW_ROOT}/drivers/sdblock)
 
 # Pairs with set_sys_clock_khz(252000) in main(): clk_hstx = clk_sys/2 =
@@ -133,13 +137,17 @@ target_include_directories(frank-test PRIVATE
 # this produced a correctly-opened backend driving the wrong pins in the
 # wrong order, which looks exactly like a dead output.
 #
-# It is safe to set for the whole image: the macros are read only by
-# drivers/hdmi_pio, and the PiZero is the only board here that uses it.
-# HDMI_BASE_PIN likewise defaults to 12, which is where HSTX lives and
-# not where this board's connector is.
+# Scoped to the driver's own sources rather than set for the whole image.
+# HDMI_BASE_PIN is not a name only this driver uses - Core 2U's board
+# header defines it too, for the HSTX connector - so a target-wide value
+# collided with it and the A build said so. Only drivers/hdmi_pio reads
+# these, so this is where they belong.
+set_source_files_properties(
+    ${FW_ROOT}/drivers/hdmi_pio/hdmi.c
+    ${FW_ROOT}/drivers/hdmi_pio/hdmi_scanline.S
+    PROPERTIES COMPILE_DEFINITIONS "PLATFORM_Z0=1;HDMI_BASE_PIN=32")
+
 target_compile_definitions(frank-test PRIVATE
-    PLATFORM_Z0=1
-    HDMI_BASE_PIN=32
     MODE_HSTX_CLK_DIV=2
     FIRMWARE_VERSION="${FRANK_VERSION}"
 )

@@ -30,6 +30,23 @@ void ui_textpage_set_menubar(const ui_menubar_t *mb);
 /* Rebuild the whole page. Cheap enough to do every present. */
 void ui_textpage_draw(void);
 
+/* A modal window, for the dialogs that draw themselves.
+ *
+ * The picker and the message boxes reach this page through desktop
+ * state, so they come through on their own. The dlg_* windows do not:
+ * they draw into the 640x480 surface with ui_window_draw(), and the
+ * backends that use this page never scan that surface. The audio dialog
+ * therefore played its melody with the results list still on screen and
+ * its Stop button drawn into a buffer nothing displays - the operator
+ * could hear it and had no way to know how to stop it.
+ *
+ * `lines` and `hint` are borrowed, not copied: pass static storage that
+ * outlives the frame. Clear it when the dialog closes or the page will
+ * keep showing a window that is no longer there. */
+void ui_textpage_modal(const char *title, const char *const *lines, int n,
+                       int selected, const char *hint);
+void ui_textpage_modal_clear(void);
+
 /* True once the interface has handed its state over. Backends fall back
  * to scaling until then, because the page would otherwise be blank. */
 bool ui_textpage_ready(void);

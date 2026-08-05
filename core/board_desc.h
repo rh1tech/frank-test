@@ -59,6 +59,12 @@ typedef struct {
      * present where the codec needs a master clock. */
     int8_t i2s_data, i2s_clk_base, i2s_mclk;
 
+    /* Where I2S comes out when the PCM5122 hat is fitted, which is not
+     * where it comes out otherwise: the hat occupies its own pins and
+     * the onboard pair above goes to whatever the board already had.
+     * Same convention - sclk = base, lrck = base + 1. */
+    int8_t pcm_i2s_data, pcm_i2s_clk_base;
+
     /* Video. The eight pins are always contiguous from here. */
     int8_t video_base;
 

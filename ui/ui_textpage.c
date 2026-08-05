@@ -85,6 +85,21 @@ static const ui_menubar_t *s_menu;
 
 void ui_textpage_set_desktop(const ui_desktop_t *d) { s_desk = d; }
 
+static const char *s_modal_title, *s_modal_hint;
+static const char *const *s_modal_lines;
+static int s_modal_n, s_modal_sel;
+
+void ui_textpage_modal(const char *title, const char *const *lines, int n,
+                       int selected, const char *hint) {
+    s_modal_title = title;
+    s_modal_lines = lines;
+    s_modal_n     = n;
+    s_modal_sel   = selected;
+    s_modal_hint  = hint;
+}
+
+void ui_textpage_modal_clear(void) { s_modal_title = NULL; }
+
 bool ui_textpage_ready(void) { return s_desk != NULL; }
 void ui_textpage_set_menubar(const ui_menubar_t *mb) { s_menu = mb; }
 
@@ -157,7 +172,16 @@ void __not_in_flash_func(ui_textpage_draw)(void) {
 
     char line[80];
 
-    /* Modal things first, and nothing behind them. */
+    /* Modal things first, and nothing behind them. A dlg_* window
+     * outranks the picker and the message box: it is the one the
+     * operator is looking at. */
+    if (s_modal_title) {
+        txt_box(s_modal_title, s_modal_lines, s_modal_n, s_modal_sel);
+        if (s_modal_hint)
+            txt_puts(TXT_M_X, s_rows - TXT_M_Y - 1, s_modal_hint,
+                     UI_GREY_2, UI_BLACK);
+        return;
+    }
     if (s_desk->picker_title) {
         txt_box(s_desk->picker_title, s_desk->picker_items,
                 s_desk->picker_count > 16 ? 16 : s_desk->picker_count,

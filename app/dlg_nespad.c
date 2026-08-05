@@ -31,6 +31,7 @@
 #include "ui_gfx.h"
 #include "ui_input.h"
 #include "ui_video.h"
+#include "ui_textpage.h"
 #include "ui_window.h"
 
 #include "hardware/clocks.h"
@@ -147,8 +148,46 @@ static void describe(char *out, unsigned len, uint32_t state) {
     }
 }
 
+/* The text-page version - see ui_textpage_modal(). The schematic pads
+ * cannot be drawn in a 6x8 grid, so this names the buttons that are down
+ * instead, which is the fact the operator is checking for. */
+static char s_tp[2][40];
+static const char *s_tp_lines[2];
+
+static void names_for(uint32_t state, char *out, unsigned len) {
+    unsigned at = 0;
+    out[0] = '\0';
+    for (unsigned i = 0; i < BUTTON_COUNT; i++) {
+        if (!(state & buttons[i].mask)) continue;
+        const int n = snprintf(out + at, len - at, "%s%s",
+                               at ? " " : "", buttons[i].name);
+        if (n < 0 || (unsigned)n >= len - at) break;
+        at += (unsigned)n;
+    }
+    if (!at) snprintf(out, len, "-");
+}
+
+static void publish_textpage(uint32_t s1, uint32_t s2, bool have2) {
+    char b[32];
+
+    names_for(s1, b, sizeof(b));
+    snprintf(s_tp[0], sizeof(s_tp[0]), "Port 1: %s", b);
+
+    if (have2) {
+        names_for(s2, b, sizeof(b));
+        snprintf(s_tp[1], sizeof(s_tp[1]), "Port 2: %s", b);
+    } else {
+        snprintf(s_tp[1], sizeof(s_tp[1]), "Port 2: not fitted");
+    }
+
+    for (int i = 0; i < 2; i++) s_tp_lines[i] = s_tp[i];
+    ui_textpage_modal("NES Gamepads", s_tp_lines, 2, -1,
+                      "press buttons   Esc closes");
+}
+
 static void draw(const dlg_ctx_t *c, uint32_t s1, uint32_t s2, bool have2) {
     ui_surface_t *s = ui_video_surface();
+    publish_textpage(s1, s2, have2);
     c->paint_background();
 
     const int content_h = PAD_H + 10 + 12;
@@ -292,4 +331,6 @@ void dlg_nespad(const dlg_ctx_t *c) {
 
         sleep_ms(8);
     }
+
+    ui_textpage_modal_clear();
 }
