@@ -203,8 +203,33 @@ void __not_in_flash_func(ui_textpage_draw)(void) {
     /* One line per test: name, verdict, and as much of the measurement
      * as fits. The verdict is coloured because on a television that is
      * the only thing readable from across the room. */
-    int row = TXT_M_Y + 3;
-    for (int i = 0; i < s_desk->row_count && row < s_rows - TXT_M_Y - 2; i++, row++) {
+    const int first_row = TXT_M_Y + 3;
+    const int last_row  = s_rows - TXT_M_Y - 2;
+    const int lines     = last_row - first_row;
+
+    /* This page keeps its own scroll position rather than borrowing the
+     * desktop's first_visible.
+     *
+     * The desktop computes that against 20-pixel rows in a 640x480
+     * window; this page has a different count entirely, so the two
+     * windows do not correspond and following the desktop's would put
+     * the selection off the bottom of a board that only has this page.
+     * The arrow keys were reaching the desktop the whole time - the
+     * selection moved, nothing showed it, and the list never followed.
+     *
+     * Static because it must persist between frames: recomputing from
+     * the selection alone would snap the list so the cursor sits at an
+     * edge on every keypress rather than moving within the window. */
+    static int first;
+    if (lines > 0) {
+        if (s_desk->selected < first)          first = s_desk->selected;
+        if (s_desk->selected >= first + lines) first = s_desk->selected - lines + 1;
+        if (first > s_desk->row_count - lines) first = s_desk->row_count - lines;
+        if (first < 0)                         first = 0;
+    }
+
+    int row = first_row;
+    for (int i = first; i < s_desk->row_count && row < last_row; i++, row++) {
         const ui_test_row_t *r = &s_desk->rows[i];
 
         const char *tag; uint8_t col;
@@ -216,9 +241,22 @@ void __not_in_flash_func(ui_textpage_draw)(void) {
             default:         tag = "....";  col = UI_GREY_4; break;
         }
 
+        /* The selected row, banded across the full width. There is no
+         * pointer on most of these boards and no second colour to spare,
+         * so this is the only thing saying what Run Selected will run. */
+        const bool on = (i == s_desk->selected);
+        const uint8_t bg = on ? UI_ACCENT : UI_BLACK;
+        if (on) {
+            for (int c = TXT_M_X; c < s_cols - TXT_M_X; c++)
+                txt_glyph(c, row, ' ', UI_WHITE, UI_ACCENT);
+            /* The verdict keeps its colour everywhere else; on the band
+             * it would be unreadable against the accent. */
+            col = UI_WHITE;
+        }
+
         snprintf(line, sizeof(line), "%-15.15s", r->name);
-        txt_puts(TXT_M_X, row, line, UI_WHITE, UI_BLACK);
-        txt_puts(TXT_M_X + 16, row, tag, col, UI_BLACK);
+        txt_puts(TXT_M_X, row, line, UI_WHITE, bg);
+        txt_puts(TXT_M_X + 16, row, tag, col, bg);
         /* As much of the measurement as the line actually has room for,
          * measured rather than assumed. This was a fixed 19 characters
          * against a page 30 wide here, so results were cut mid-word -
@@ -233,10 +271,17 @@ void __not_in_flash_func(ui_textpage_draw)(void) {
                 /* A cut is worth seeing. Silent truncation reads as a
                  * complete sentence that happens to end oddly. */
                 if ((int)strlen(r->detail) > room) line[room - 1] = '>';
-                txt_puts(col_x, row, line, UI_GREY_2, UI_BLACK);
+                txt_puts(col_x, row, line, on ? UI_WHITE : UI_GREY_2, bg);
             }
         }
     }
+
+    /* Say when the list runs past the window, at both ends. A page that
+     * simply stops gives no reason to press a key. */
+    if (first > 0)
+        txt_puts(s_cols - TXT_M_X - 1, first_row, "^", UI_GREY_4, UI_BLACK);
+    if (first + lines < s_desk->row_count)
+        txt_puts(s_cols - TXT_M_X - 1, last_row - 1, "v", UI_GREY_4, UI_BLACK);
 
     snprintf(line, sizeof(line), "%d passed  %d failed  %d n/a",
              s_desk->passed, s_desk->failed, s_desk->na);

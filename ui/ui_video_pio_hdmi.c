@@ -44,9 +44,13 @@
  * Borrowed, exactly as composite borrows it. Two 4 bpp screen buffers
  * already hold 307,200 bytes of the RP2350's 520 KB and another 76,800
  * does not fit. This backend never scans our buffers, so one of the
- * double-buffered pair is doing nothing and that is where the page goes.
- * The cost is that this path must never swap them, and it has no reason
- * to: there is no vertical blank here to swap at.
+ * double-buffered pair is doing nothing and that is where the pages go.
+ *
+ * Pages, plural: that spare buffer is 153,600 bytes and a page here is
+ * 76,800, so both fit inside it and this path can flip between them.
+ * That is not a luxury — every repaint starts by clearing the frame, and
+ * with one page the display showed the clear, so the screen flashed on
+ * each keypress.
  */
 
 #include "ui_video.h"
@@ -73,7 +77,14 @@
 #define PIO_W 320
 #define PIO_H 240
 
-static uint8_t *page;
+/* Both pages live inside the borrowed 4 bpp buffer. If the desktop ever
+ * shrinks, this path silently scribbles past the end of it, so fail the
+ * build instead. */
+_Static_assert(2 * PIO_W * PIO_H <= UI_FB_BYTES,
+               "PIO HDMI needs two pages inside one borrowed framebuffer");
+
+static uint8_t *page;   /* what the driver is scanning */
+static uint8_t *back;   /* what we are drawing */
 static int      s_video_base = 12;
 
 /* main() says where this board's video pins are, because the two HDMI
@@ -105,13 +116,18 @@ static bool pio_hdmi_init(void) {
      * refusing is what picks the right one. */
     if (s_video_base < 32) return false;
 
+    /* Two pages, both inside the borrowed buffer. It is a 640x480 4 bpp
+     * screen - 153,600 bytes - and a page here is 320x240 at 8 bpp, so
+     * two of them fit with room to spare. See pio_hdmi_present() for
+     * why one is not enough. */
     extern uint8_t *ui_video_spare_bits(void);
     page = ui_video_spare_bits();
-    memset(page, 0, (size_t)PIO_W * PIO_H);
+    back = page + (size_t)PIO_W * PIO_H;
+    memset(page, 0, (size_t)PIO_W * PIO_H * 2);
 
     graphics_set_res(PIO_W, PIO_H);
     graphics_set_buffer(page);
-    ui_textpage_target(page, PIO_W, PIO_H);
+    ui_textpage_target(back, PIO_W, PIO_H);
 
     /* The palette is loaded by core 1, after init - see pio_core1_run. */
     multicore_reset_core1();
@@ -120,11 +136,27 @@ static bool pio_hdmi_init(void) {
 }
 
 static void pio_hdmi_present(void) {
-    /* Nothing to synchronise with. The driver owns the frame and reads
-     * it on its own schedule, so this simply rewrites it - and with no
-     * moving content between frames, a tear at pixel granularity is not
-     * visible. Composite makes the same trade for the same reason. */
-    if (ui_textpage_ready()) ui_textpage_draw();
+    /* Draw into the page the driver is not scanning, then hand it over.
+     *
+     * Drawing straight into the live page meant the display showed the
+     * clear-to-black that starts every repaint, so the whole screen
+     * flashed on each keypress. There is nothing to synchronise with
+     * here - no vertical blank this side of the ISR - so the fix is to
+     * make the visible page never be the one under construction.
+     *
+     * The swap itself is one pointer, which the ISR reads per scanline:
+     * the worst case is a single frame split between two images that
+     * differ by one highlighted row, and that is not visible. */
+    if (!ui_textpage_ready()) return;
+
+    ui_textpage_draw();
+
+    uint8_t *shown = back;
+    back = page;
+    page = shown;
+
+    graphics_set_buffer(shown);
+    ui_textpage_target(back, PIO_W, PIO_H);
 }
 
 /* From the driver's ISR, not from present(): the Video output row is
