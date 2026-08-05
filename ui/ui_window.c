@@ -191,65 +191,60 @@ void ui_progress(ui_surface_t *s, int x, int y, int w, int h, int frac) {
         ui_hline(s, x + 1, y + 1, filled, UI_ACCENT_L);
 }
 
-/* The scroll bar, drawn quietly.
+/* The scroll bar, as System 7 draws one.
  *
- * It was a black-framed track with black-framed plates in it and solid
- * black arrows - the same treatment a button gets, which is right for a
- * control you press and much too loud for a strip that sits beside
- * twenty rows of text. Next to a list of measurements it was the
- * heaviest thing on screen and drew the eye away from the results.
+ * Two earlier attempts missed in opposite directions, which is worth
+ * recording. The first framed the track in black and then put framed,
+ * bevelled plates inside it - every edge drawn twice, and the loudest
+ * thing on a screen otherwise made of text. The second removed the
+ * outlines instead of thinning them, and the result was so recessive it
+ * read as a gap between the list and the window frame.
  *
- * So: no outline around the track, one grey rule separating it from the
- * rows, a lightly recessed channel, and a thumb that is a plain raised
- * face rather than a framed plate. The arrows are grey and a pixel
- * smaller. Nothing here needs a hard edge to read as a control, because
- * its shape and position already say what it is.
+ * The original gets it right by using black sparingly rather than not at
+ * all: single-pixel outlines, no bevels, and elements that fill the
+ * channel's full width. What made the first version heavy was doubling
+ * the edges, not the black.
+ *
+ * The track is a fifty-percent stipple, which is what a Mac uses and
+ * what makes the thumb read as solid against it without either needing
+ * a heavier border.
  */
 void ui_scrollbar(ui_surface_t *s, int x, int y, int h,
                   int total, int visible, int first) {
     const int w = 15;
 
-    /* The channel, and a single rule where it meets the list. */
-    ui_fill(s, x, y, w, h, UI_GREY_1);
-    ui_vline(s, x, y, h, UI_GREY_3);
+    /* The channel: a fifty-percent stipple, then outlined once. */
+    ui_fill_pattern(s, x, y, w, h, &UI_PAT_GREY50, UI_GREY_3, UI_PAPER);
+    ui_frame(s, x, y, w, h, UI_BLACK);
 
-    /* Recessed, but in greys rather than against black: a shadow at the
-     * top and left, a highlight at the bottom and right. */
-    ui_hline(s, x + 1, y, w - 1, UI_GREY_3);
-    ui_hline(s, x + 1, y + h - 1, w - 1, UI_WHITE);
-
-    /* Arrow buttons: a face and a soft edge, no frame. */
+    /* Arrow buttons at each end: a plain face, one rule against the
+     * track, and a triangle. */
     for (int e = 0; e < 2; e++) {
         const int by = e ? (y + h - w) : y;
-        ui_fill(s, x + 1, by, w - 1, w, UI_GREY_1);
-        ui_hline(s, x + 1, e ? by : by + w - 1, w - 1, UI_GREY_3);
+        ui_fill(s, x + 1, by + 1, w - 2, w - 2, UI_PAPER);
+        ui_hline(s, x, e ? by : (by + w - 1), w, UI_BLACK);
     }
 
-    /* The glyphs, in the same ink as a disabled label rather than in
-     * black. Four rows, narrowing to a point. */
     for (int i = 0; i < 4; i++) {
-        ui_hline(s, x + 7 - i, y + 5 + i, 1 + i * 2, UI_GREY_5);
-        ui_hline(s, x + 7 - i, y + h - 6 - i, 1 + i * 2, UI_GREY_5);
+        ui_hline(s, x + 7 - i, y + 5 + i, 1 + i * 2, UI_BLACK);
+        ui_hline(s, x + 7 - i, y + h - 6 - i, 1 + i * 2, UI_BLACK);
     }
 
     if (total <= visible || total <= 0) return;
 
     int track = h - w * 2;
     int th    = (track * visible) / total;
-    if (th < 16) th = 16;
+    if (th < 16)    th = 16;
     if (th > track) th = track;
 
     const int span = (total > visible) ? (total - visible) : 1;
-    int ty = y + w + ((track - th) * first) / span;
+    const int ty   = y + w + ((track - th) * first) / span;
 
-    /* The thumb: a raised face with a highlight and a shadow, and no
-     * outline. It is the only part that moves, which is enough to make
-     * it the thing you reach for. */
-    ui_fill(s, x + 3, ty, w - 5, th, UI_GREY_2);
-    ui_hline(s, x + 3, ty, w - 5, UI_WHITE);
-    ui_vline(s, x + 3, ty, th, UI_WHITE);
-    ui_hline(s, x + 3, ty + th - 1, w - 5, UI_GREY_4);
-    ui_vline(s, x + w - 3, ty, th, UI_GREY_4);
+    /* The thumb fills the channel, as it does on a Mac: a plain face
+     * with one black outline, and nothing else. Its solidity against the
+     * stipple is what makes it visible, so it needs no more than that. */
+    ui_fill(s, x + 1, ty, w - 2, th, UI_PAPER);
+    ui_frame(s, x, ty, w, th, UI_BLACK);
 }
 
 void ui_separator(ui_surface_t *s, int x, int y, int w) {
