@@ -27,6 +27,7 @@
 #include "frank_xip.h"
 
 #include "hardware/clocks.h"
+#include "hardware/vreg.h"
 #include "hardware/structs/sysinfo.h"
 
 #include <stdio.h>
@@ -54,12 +55,44 @@ static void fmt_rate(char *out, unsigned len, uint32_t kbps) {
 
 /* ------------------------------------------------------------------ */
 
+/* The core voltage, in millivolts, as the regulator is actually set.
+ *
+ * Read back rather than remembered. What the firmware asked for and what
+ * the regulator is doing are different things - a value above 1.30 V is
+ * refused unless the limit has been lifted first, and the request then
+ * quietly does nothing - so the only honest number is the one in the
+ * register.
+ *
+ * The enum is not a linear scale: it steps 50 mV to 1.30, then 50 again
+ * to 1.40, then 100 to 1.90. Hence a table rather than arithmetic. */
+static unsigned core_mv(void) {
+    static const uint16_t mv[] = {
+         550,  600,  650,  700,  750,  800,  850,  900,   /* 0-7   */
+         950, 1000, 1050, 1100, 1150, 1200, 1250, 1300,   /* 8-15  */
+        1350, 1400, 1500, 1600, 1650, 1700, 1800, 1900,   /* 16-23 */
+    };
+    const unsigned sel = (unsigned)vreg_get_voltage();
+    return (sel < count_of(mv)) ? mv[sel] : 0u;
+}
+
 static ui_test_state_t t_silicon(const detect_result_t *d, char *detail,
                                  unsigned len, test_progress_fn p) {
     (void)p;
-    snprintf(detail, len, "%s rev %u, %u MHz",
-             frank_mcu_class_name(d->mcu), (unsigned)d->chip_rev,
-             (unsigned)(clock_get_hz(clk_sys) / 1000000u));
+
+    const unsigned mv  = core_mv();
+    const unsigned mhz = (unsigned)(clock_get_hz(clk_sys) / 1000000u);
+
+    /* The voltage is worth a row of its own only when it is unusual. At
+     * the stock 1.10 V it is noise; anything else is a deliberate
+     * overvolt and the first thing to know when a board is unstable. */
+    if (mv)
+        snprintf(detail, len, "%s rev %u, %u MHz, %u.%02u V",
+                 frank_mcu_class_name(d->mcu), (unsigned)d->chip_rev,
+                 mhz, mv / 1000u, (mv % 1000u) / 10u);
+    else
+        snprintf(detail, len, "%s rev %u, %u MHz",
+                 frank_mcu_class_name(d->mcu), (unsigned)d->chip_rev, mhz);
+
     return TEST_PASS;
 }
 
