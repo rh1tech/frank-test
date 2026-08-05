@@ -153,6 +153,10 @@ void ui_desktop_set_cmd_checked(int cmd, bool checked);
 int ui_desktop_hit_row(const ui_desktop_t *d, int x, int y);
 int ui_desktop_rows_shown(void);
 
+/* Where the list must start for `index` to be drawn in full. Rows may be
+ * clipped by the bottom edge, but never the selected one. */
+int ui_desktop_first_showing(const ui_desktop_t *d, int index);
+
 /* Resolve a pointer position against the scroll bar. Returns the new
  * first visible row, or -1 when the pointer is not on the bar or the
  * bar is not being drawn. */

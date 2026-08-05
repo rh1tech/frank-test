@@ -181,11 +181,12 @@ static void paint_desktop(void) {
 
 /* Keep the running test visible. The list is longer than the window, and
  * a run that scrolls off the bottom looks stalled. */
+/* The row a run is currently executing, kept on screen and whole. Same
+ * reasoning as scroll_to_selection(): the running row is the one being
+ * read, and half of it is not worth having. */
 static void follow(unsigned i) {
-    const int visible = ui_desktop_rows_shown();
-    if ((int)i < g_desk.first_visible)            g_desk.first_visible = (int)i;
-    if ((int)i >= g_desk.first_visible + visible) g_desk.first_visible = (int)i - visible + 1;
-    g_desk.selected = (int)i;
+    g_desk.selected      = (int)i;
+    g_desk.first_visible = ui_desktop_first_showing(&g_desk, (int)i);
 }
 
 /* ------------------------------------------------------------------ */
@@ -302,12 +303,17 @@ static int hit_row(int x, int y) {
     return ui_desktop_hit_row(&g_desk, x, y);
 }
 
+/* Keep the selection on screen, and whole.
+ *
+ * Counting rows was close enough while they were all the same height and
+ * became wrong once one of them could be clipped by the bottom edge:
+ * "rows shown" includes the part-drawn one, so a selection sitting in it
+ * looked visible and was in fact cut through the middle. The interface
+ * knows which rows fit because it drew them, so it answers rather than
+ * being second-guessed here. */
 static void scroll_to_selection(void) {
     if (g_desk.selected < 0) return;
-    if (g_desk.selected < g_desk.first_visible)
-        g_desk.first_visible = g_desk.selected;
-    if (g_desk.selected >= g_desk.first_visible + ui_desktop_rows_shown())
-        g_desk.first_visible = g_desk.selected - ui_desktop_rows_shown() + 1;
+    g_desk.first_visible = ui_desktop_first_showing(&g_desk, g_desk.selected);
 }
 
 static void scroll_by(int rows) {

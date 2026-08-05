@@ -227,6 +227,10 @@ static struct {
      * drawn rather than against a second guess at where it is. */
     int  bar_x, bar_y, bar_h;
     bool bar_shown;
+
+    /* The width rows were laid out at, which decides which of them
+     * wrapped and so how tall they are. */
+    int  list_w;
 } s_geom;
 
 /* Where the detail column ends and how wide it may be. Kept beside the
@@ -269,6 +273,37 @@ int ui_desktop_rows_shown(void) {
  * arrows only act on the press so a held button does not run away with
  * the list, while the thumb tracks continuously, which is what makes it
  * feel like a thumb rather than a jump target. */
+/* Where the list has to start for `index` to be shown in full.
+ *
+ * Rows may be clipped by the bottom of the window - that is what stops
+ * the list ending in a band of grey - but the selected row must never
+ * be one of them. A highlight cut in half looks like a fault, and it is
+ * the one row the operator is actually reading.
+ *
+ * Answers with the smallest scroll that achieves it: if the row is
+ * already fully visible the list does not move at all, and if it is
+ * below the fold the list scrolls just far enough to seat it against the
+ * bottom edge rather than jumping it to the top. */
+int ui_desktop_first_showing(const ui_desktop_t *d, int index) {
+    if (index < 0 || index >= d->row_count) return d->first_visible;
+    if (index < d->first_visible) return index;
+    if (s_geom.ch <= 0) return index;
+
+    /* Walk back from the target, taking rows while they still fit. */
+    int first = index;
+    int used  = row_height(&d->rows[index], s_geom.list_w);
+
+    while (first > 0) {
+        const int h = row_height(&d->rows[first - 1], s_geom.list_w);
+        if (used + h > s_geom.ch) break;
+        used += h;
+        first--;
+    }
+
+    /* Already seated somewhere above that point: leave it alone. */
+    return (d->first_visible > first) ? d->first_visible : first;
+}
+
 int ui_desktop_scroll_hit(const ui_desktop_t *d, int x, int y,
                           bool pressed, bool held) {
     if (!s_geom.bar_shown) return -1;
@@ -334,6 +369,7 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
         list_w = cw - BAR_W;
 
     s_geom.cx = cx; s_geom.cy = cy; s_geom.cw = cw; s_geom.ch = ch;
+    s_geom.list_w = list_w;
     s_geom.count = 0;
 
     int y = cy;
