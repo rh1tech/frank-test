@@ -88,6 +88,7 @@ static ui_menu_item_t audio_items[] = {
 static ui_menu_item_t tests_items[] = {
     { "Run All",             'A', true,  false, CMD_RUN_ALL },
     { "Run Selected",        'E', true,  false, CMD_RUN_SELECTED },
+    { "Burn-in...",          0,   true,  false, CMD_BURNIN },
     { NULL,                  0,   true,  false, CMD_NONE },
     { "NES Gamepad(s)...",   'G', false, false, CMD_NESPAD },
     { "PS/2 Ports...",       'P', false, false, CMD_PS2 },
@@ -101,7 +102,7 @@ static const ui_menu_t menus[] = {
     { "Board",   board_items,  1, false, 'B' },
     { "Video",   video_items,  7, false, 'V' },
     { "Audio",   audio_items,  3, false, 'U' },
-    { "Tests",   tests_items,  7, false, 'T' },
+    { "Tests",   tests_items,  8, false, 'T' },
 };
 
 static const ui_menubar_t default_bar = {

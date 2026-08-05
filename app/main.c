@@ -622,6 +622,14 @@ static void do_command(int cmd) {
             break;
         }
 
+        case CMD_BURNIN: {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            dlg_burnin(&ctx, &g_results);
+            redraw();
+            break;
+        }
+
         case CMD_LED: {
             const dlg_ctx_t ctx = { .detect = &g_detect,
                                     .paint_background = paint_desktop };

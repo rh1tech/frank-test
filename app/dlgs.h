@@ -23,6 +23,7 @@
 #define DLGS_H
 
 #include "detect.h"
+#include "registry.h"
 #include "frank_audio.h"
 
 /* Dialog margins.
@@ -69,5 +70,9 @@ void dlg_ps2(const dlg_ctx_t *c);
 /* The indicator LEDs. Firmware can drive a pin and cannot see light, so
  * this drives them and leaves the verdict to whoever is looking. */
 void dlg_led(const dlg_ctx_t *c);
+
+/* The whole suite on repeat, counting failures per row. Catches the
+ * class of fault a single cold pass never will. */
+void dlg_burnin(const dlg_ctx_t *c, registry_results_t *r);
 
 #endif /* DLGS_H */

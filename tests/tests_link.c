@@ -114,8 +114,86 @@ static ui_test_state_t t_link_reset(const detect_result_t *d, char *detail,
     return TEST_FAIL;
 }
 
+/* The link over minutes rather than milliseconds.
+ *
+ * "Processor link" measures a burst: one sweep, a few hundred
+ * milliseconds, and a throughput figure. That answers whether the link
+ * works and says nothing about whether it keeps working, which is a
+ * different question and the one that matters for a board going into a
+ * case. A link with a marginal joint, a reflection, or a slave whose
+ * clock drifts as it warms passes every burst and drops bytes every few
+ * seconds.
+ *
+ * So this repeats the sweep for a fixed spell and counts. What comes out
+ * is an error rate - errors against bytes moved - which is the figure
+ * you can actually compare between two boards, or between the same board
+ * cold and warm.
+ *
+ * Thirty seconds is a compromise and worth naming as one. It is long
+ * enough to catch a fault that shows up every few seconds and far too
+ * short to characterise one that shows up every few minutes; a rig doing
+ * acceptance rather than diagnosis should run the burn-in instead, which
+ * has no limit and includes this test in every cycle.
+ *
+ * A single error fails the row. Not because one error is a catastrophe -
+ * it is not, on a link with no retry - but because the burst test
+ * already passes on a clean link, so a soak that tolerated errors would
+ * report exactly what the burst reported and be worth nothing. */
+#define SOAK_MS 30000u
+
+static ui_test_state_t t_link_soak(const detect_result_t *d, char *detail,
+                                   unsigned len, test_progress_fn p) {
+    (void)d;
+
+    if (!s_inited) {
+        snprintf(detail, len, "link not initialised");
+        return TEST_NORUN;
+    }
+
+    diag_link_result_t r;
+    uint32_t errors = 0, passes = 0;
+
+    const absolute_time_t started = get_absolute_time();
+    const absolute_time_t deadline = make_timeout_time_ms(SOAK_MS);
+
+    while (absolute_time_diff_us(get_absolute_time(), deadline) > 0) {
+        diag_link_run(&r);
+
+        if (!r.contacted) {
+            snprintf(detail, len, "slave stopped answering after %lus",
+                     (unsigned long)(absolute_time_diff_us(started,
+                         get_absolute_time()) / 1000000));
+            return TEST_FAIL;
+        }
+
+        passes++;
+        errors += r.sweep[0].byte_errors;
+
+        if (p) {
+            const int64_t gone = absolute_time_diff_us(started, get_absolute_time());
+            p((int)((gone / 1000) * 1000 / SOAK_MS), NULL);
+        }
+    }
+    if (p) p(1000, NULL);
+
+    /* Passes and errors, not bytes. The diagnostic reports throughput
+     * and error counts but not how much it moved, and multiplying one by
+     * elapsed time would produce a MiB figure that looks measured and is
+     * not. */
+    if (errors) {
+        snprintf(detail, len, "%lu errors over %lu passes",
+                 (unsigned long)errors, (unsigned long)passes);
+        return TEST_FAIL;
+    }
+
+    snprintf(detail, len, "%lu passes clean in %lus",
+             (unsigned long)passes, (unsigned long)(SOAK_MS / 1000u));
+    return TEST_PASS;
+}
+
 const frank_test_t frank_tests_link[] = {
     { "Processor link", ICON_LINK, CAP_LINK, 0, t_link       },
+    { "Link soak",      ICON_LINK, CAP_LINK, 0, t_link_soak  },
     { "Slave reset",    ICON_LINK, CAP_LINK, 0, t_link_reset },
 };
 

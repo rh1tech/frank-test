@@ -41,6 +41,7 @@ add_executable(frank-test
     main.c
     dlg_audio.c
     dlg_nespad.c
+    dlg_burnin.c
     dlg_led.c
     dlg_ps2.c
     dlg_tape.c

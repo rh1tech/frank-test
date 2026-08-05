@@ -24,7 +24,8 @@ one that owns up.
 | `GAMEPAD_NES` | Interactive |
 | `TAPE_IN`, `TAPE_DIP_GATED` | Interactive |
 | `PS2` | Interactive. Raw byte counts, scancodes, mouse deltas |
-| `USB_HOST`, `USB_DEVICE`, `USB_HUB`, `USB_MUX`, `PIO_USB` | Untested |
+| `USB_HOST`, `USB_HUB` | Tested. Enumerated devices reported; the hub proves itself |
+| `USB_DEVICE`, `USB_MUX`, `PIO_USB` | Untested |
 | `GAMEPAD_DB9` | Untested |
 | `ESP01` | Tested. AT, then AT+VER or AT+GMR |
 | `ESP32_SPI` | Untested |
@@ -142,7 +143,7 @@ warning in its detail, because the fault it records is in the past.
 
 ## Tier 2: worthwhile, more work
 
-### 6. USB HID host reporting (`CAP_USB_HOST`)
+### 6. USB HID host reporting (`CAP_USB_HOST`) — done
 
 The input layer already enumerates keyboards and mice, since the interface
 depends on it, but nothing reports what it found. A dialog showing VID/PID,
@@ -152,13 +153,15 @@ invisible subsystem visible.
 That proves the connector, the host stack and the device. It is nearly free: the
 data is already flowing, it just is not displayed anywhere.
 
-### 7. USB hub and mux (`CAP_USB_HUB`, `CAP_USB_MUX`)
+### 7. USB hub and mux (`CAP_USB_HUB`, `CAP_USB_MUX`) — done, in part
 
-Core 2U has a hub. Enumerate through it, report the device count and which ports
-are occupied. That proves the hub powers up and enumerates.
+It turned out to need nothing of its own. Every device on Core 2U is behind the
+hub, so there is no such thing as one that enumerated without passing through it,
+and anything in the inventory is proof the hub powered up and passed a device
+along. Port occupancy is not reported: it would need the hub interrogated
+directly, and the count already answers the question that matters.
 
-The mux is switch-selected, so like the audio mux it is half a path. The firmware
-can say which side it sees, and has to say it cannot pick.
+The mux is switch-selected and stays untestable, like the audio one.
 
 ### 8. PIO-USB second port (`CAP_PIO_USB`)
 
@@ -207,20 +210,34 @@ invisible today.
 
 ## Tier 3: infrastructure rather than tests
 
-### 13. Burn-in loop
+### 13. Burn-in loop — done
 
 Run the whole suite over and over, counting failures per test. That catches the
 class of fault a single pass never will: PSRAM that fails once warm, a link that
 degrades, an intermittent joint.
 
-Needs per-row failure counts and a running duration rather than just the latest
-state. Pairs naturally with the report export above.
+Built as `Tests` ▸ `Burn-in`. It counts failures per row and shows only the rows
+that have gone wrong, so a clean burn-in is a blank panel and anything on it is
+something to look at. Tests reporting *could not run* are counted separately from
+failures — an empty SD socket is not an intermittent fault, and lumping the two
+together would bury a real one under forty of them.
 
-### 14. Long-run link error rate
+Stopping happens between tests, never during one: a test owns its pins and its
+timing while it runs. There is no cycle limit, because the operator is the only
+party who knows how much evidence the board needs.
 
-The link test measures a burst. A soak measuring bit error rate over minutes
-would characterise it properly, which is the difference between "it works" and
-"it works reliably".
+### 14. Long-run link error rate — done
+
+The link test measures a burst, which answers whether the link works and says
+nothing about whether it keeps working. *Link soak* repeats the sweep for thirty
+seconds and counts errors against passes.
+
+Thirty seconds is a compromise and the code says so: long enough to catch a fault
+that appears every few seconds, far too short for one that appears every few
+minutes. For that, run the burn-in, which has no limit and includes this row in
+every cycle. A single error fails the row — not because one error is a
+catastrophe, but because a soak that tolerated errors would report exactly what
+the burst already reported.
 
 ### 15. Slave-side self-test
 
@@ -228,11 +245,18 @@ On a Core 2 the slave is a whole RP2350 with its own flash and RAM, and all we
 prove today is that it answers. It could run its own memory tests and report over
 the link, roughly doubling the coverage of a dual-chip board.
 
-### 16. Clock cross-check
+### 16. Clock cross-check — done
 
-MegaFRANK has a 3.58 MHz crystal for the AYs and a 32.768 kHz one for the RTC.
-Measuring the system clock against the RTC gives a real accuracy figure for both.
-A crystal that is present but off-frequency is otherwise undetectable.
+Two oscillators that know nothing about each other, each checking the other. The
+system crystal has no reference to be wrong against — every timer and baud rate
+is derived from it — while the DS3231 is temperature compensated and specified
+two orders better than the part it is checking.
+
+*Clock accuracy* counts four RTC seconds and compares them with the system timer.
+It reports the disagreement in ppm and names both crystals rather than picking
+one: the RTC is the better reference in practice, but a rig that guessed would be
+wrong about half the time. The tolerance is loose on purpose — 500 ppm still
+keeps a UART happy, while a part on the wrong overtone is out by percent.
 
 ---
 
