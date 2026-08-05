@@ -213,8 +213,15 @@ void ui_scrollbar(ui_surface_t *s, int x, int y, int h,
                   int total, int visible, int first) {
     const int w = 15;
 
-    /* The channel: a fifty-percent stipple, then outlined once. */
-    ui_fill_pattern(s, x, y, w, h, &UI_PAT_GREY50, UI_GREY_3, UI_PAPER);
+    /* The channel: a fifty-percent stipple, then outlined once.
+     *
+     * Dithered against something near black, not against a light grey.
+     * The whole design depends on this contrast: the thumb is a plain
+     * white face with one thin outline, and what makes it read as raised
+     * is the dark texture it sits against. Stippled in UI_GREY_3 the two
+     * were nearly the same value and the strip looked flat, which is
+     * what a light track buys you - a scroll bar you cannot find. */
+    ui_fill_pattern(s, x, y, w, h, &UI_PAT_GREY50, UI_GREY_5, UI_PAPER);
     ui_frame(s, x, y, w, h, UI_BLACK);
 
     /* Arrow buttons at each end: a plain face, one rule against the
@@ -240,11 +247,22 @@ void ui_scrollbar(ui_surface_t *s, int x, int y, int h,
     const int span = (total > visible) ? (total - visible) : 1;
     const int ty   = y + w + ((track - th) * first) / span;
 
-    /* The thumb fills the channel, as it does on a Mac: a plain face
-     * with one black outline, and nothing else. Its solidity against the
-     * stipple is what makes it visible, so it needs no more than that. */
+    /* The thumb fills the channel, as it does on a Mac: a solid face
+     * with one black outline and nothing else. It is solid where the
+     * track is dithered, which is the whole of what distinguishes them.
+     *
+     * The edge against an arrow box is shared rather than drawn twice.
+     * Parked at either end, the thumb's own border landed on the row
+     * next to the arrow's rule and the two read as one thick line -
+     * which is the only place this design has a heavy edge, and exactly
+     * where the eye is when you have scrolled to the end. */
+    const int top = y + w, bot = y + h - w;
+
     ui_fill(s, x + 1, ty, w - 2, th, UI_PAPER);
-    ui_frame(s, x, ty, w, th, UI_BLACK);
+    ui_vline(s, x,         ty, th, UI_BLACK);
+    ui_vline(s, x + w - 1, ty, th, UI_BLACK);
+    if (ty > top)        ui_hline(s, x, ty, w, UI_BLACK);
+    if (ty + th < bot)   ui_hline(s, x, ty + th - 1, w, UI_BLACK);
 }
 
 void ui_separator(ui_surface_t *s, int x, int y, int w) {
