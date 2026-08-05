@@ -531,7 +531,11 @@ const frank_board_desc_t frank_board_table[] = {
               .psram_cs = 47, .led_plain = 25 },
     SIG(sig_z0pa),
     .flash_bytes = 4u * 1024u * 1024u,
-    .psram_bytes = 8u * 1024u * 1024u,
+    /* Left at zero rather than guessed. Detection measures what is
+     * actually on CS and fills this in; the PiZero ships in variants
+     * with and without PSRAM, and a descriptor claiming eight megabytes
+     * would turn an absent part into a failure. */
+    .psram_bytes = 0,
     .manual_note = "Waveshare RP2350-PiZero. HDMI is driven from the PIO "
                    "on GP32-39, not HSTX, and shows the text page rather "
                    "than the desktop - 320x240 is what that driver "

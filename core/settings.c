@@ -8,6 +8,8 @@
 
 #include "settings.h"
 
+#include "mem_test.h"
+
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "pico/stdlib.h"
@@ -23,10 +25,41 @@
  * survive. The last sector is a fixed address for a given part, and the
  * only thing that could collide with it is a filesystem we do not have.
  *
- * PICO_FLASH_SIZE_BYTES comes from the board header, so a board with a
- * 4 MB part gets its own last sector rather than an address off the end. */
-#define SETTINGS_OFFSET  (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
-#define SETTINGS_ADDR    ((const uint8_t *)(XIP_BASE + SETTINGS_OFFSET))
+ * The size is asked of the part rather than taken from the board
+ * header, and that distinction matters.
+ *
+ * PICO_FLASH_SIZE_BYTES is a build-time constant, and one image serves
+ * every board of a given package - so the 48-GPIO image says 16 MB
+ * whatever it is running on. The Waveshare PiZero carries 4 MB, and a
+ * FRANK socket takes whichever module is pushed into it. On any of
+ * those, the last sector of the *declared* size is past the end of the
+ * *actual* part: reads return whatever the address wraps to and a write
+ * lands somewhere nobody chose.
+ *
+ * So the JEDEC capacity byte decides, read once and cached. It falls
+ * back to the header only if the part will not identify itself, which
+ * is the case where nothing better is available.
+ *
+ * Reading it drops the QMI out of XIP, so it must happen with the other
+ * core parked. That is why it is cached rather than read per call: the
+ * first call is main()'s early settings_load, before video wakes core 1,
+ * and every later one - saving a board choice from a menu, with the
+ * scanout running - gets the cached answer and touches nothing. */
+static uint32_t settings_offset(void) {
+    static uint32_t cached;
+    if (cached) return cached;
+
+    uint32_t jedec = 0;
+    uint8_t  uid[8];
+    mem_test_flash_identify(&jedec, uid);
+
+    const uint32_t bytes = mem_test_flash_capacity(jedec);
+    cached = (bytes ? bytes : (uint32_t)PICO_FLASH_SIZE_BYTES) - FLASH_SECTOR_SIZE;
+    return cached;
+}
+
+#define SETTINGS_OFFSET  settings_offset()
+#define SETTINGS_ADDR    ((const uint8_t *)(XIP_BASE + settings_offset()))
 
 /* CRC-32 (IEEE, reflected) computed the slow way. This runs twice per
  * boot at most, over 32 bytes; a table would cost more flash than the
