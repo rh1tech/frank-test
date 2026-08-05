@@ -43,6 +43,7 @@ static ui_menu_item_t file_items[] = {
      * next boot, because the pins are claimed once during start-up and
      * taking them back from a running PS/2 mouse is not something this
      * firmware can do safely. */
+    { "Clocks and Voltage",  0,   true, false, CMD_OVERCLOCK },
     { "Save Report to SD",   0,   true, false, CMD_REPORT },
     { "Serial Console",      0,   true, false, CMD_CONSOLE },
     { NULL,                  0,   true, false, CMD_NONE },
@@ -99,7 +100,7 @@ static ui_menu_item_t tests_items[] = {
 
 static const ui_menu_t menus[] = {
     { "",        mark_items,   4, true,  'A' },
-    { "File",    file_items,   5, false, 'F' },
+    { "File",    file_items,   6, false, 'F' },
     { "Board",   board_items,  1, false, 'B' },
     { "Video",   video_items,  7, false, 'V' },
     { "Audio",   audio_items,  3, false, 'U' },

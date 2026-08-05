@@ -17,6 +17,7 @@ add_library(frank_core STATIC
     detect.c
     video_detect.c
     attest.c
+    oc_request.c
     i2c_bb.c
     video_select.c
     video_request.c

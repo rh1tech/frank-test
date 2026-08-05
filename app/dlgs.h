@@ -75,4 +75,8 @@ void dlg_led(const dlg_ctx_t *c);
  * class of fault a single cold pass never will. */
 void dlg_burnin(const dlg_ctx_t *c, registry_results_t *r);
 
+/* Clocks and voltage for the next boot, and only that one. Nothing is
+ * stored: a clock the board cannot hold is undone by a power cycle. */
+void dlg_overclock(const dlg_ctx_t *c);
+
 #endif /* DLGS_H */

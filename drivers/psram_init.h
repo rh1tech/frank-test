@@ -13,4 +13,8 @@
 
 void psram_init(uint cs_pin);
 
+/* The ceiling the QMI divider is derived from. Defaults to the build's
+ * PSRAM_MAX_FREQ_MHZ; the overclock dialog moves it. */
+void psram_set_max_freq(unsigned mhz);
+
 #endif

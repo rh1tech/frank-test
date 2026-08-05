@@ -26,6 +26,7 @@
 #include "mem_test.h"
 #include "frank_xip.h"
 
+#include "hardware/adc.h"
 #include "hardware/clocks.h"
 #include "hardware/vreg.h"
 #include "hardware/structs/sysinfo.h"
@@ -75,23 +76,62 @@ static unsigned core_mv(void) {
     return (sel < count_of(mv)) ? mv[sel] : 0u;
 }
 
+/* Die temperature, from the sensor on the last ADC channel.
+ *
+ * The datasheet's conversion: 27 degrees at 0.706 V, falling 1.721 mV
+ * per degree. It is not a calibrated part - the absolute figure is worth
+ * a couple of degrees at best - but the *change* is trustworthy, and
+ * change is what matters here. A burn-in that fails on the fortieth
+ * cycle is a different report depending on whether the die was at thirty
+ * degrees or seventy, and until now there was no way to know which.
+ *
+ * Returns tenths of a degree so the row can show one decimal without
+ * floating point.
+ *
+ * The ADC is left as it was found. Nothing else in this firmware uses
+ * it, but a board where something did would not thank us for leaving
+ * the temperature sensor selected. */
+static int die_decidegrees(void) {
+    const bool was_on = (adc_hw->cs & ADC_CS_TS_EN_BITS) != 0u;
+
+    adc_init();
+    adc_set_temp_sensor_enabled(true);
+    adc_select_input(ADC_TEMPERATURE_CHANNEL_NUM);
+
+    /* A handful of readings, averaged. One sample of a 12-bit converter
+     * on a sensor this small is a couple of degrees of noise. */
+    uint32_t sum = 0;
+    for (int i = 0; i < 16; i++) sum += adc_read();
+    const uint32_t raw = sum / 16u;
+
+    if (!was_on) adc_set_temp_sensor_enabled(false);
+
+    /* microvolts = raw * 3300000 / 4096 */
+    const int32_t uv = (int32_t)((raw * 3300000u) / 4096u);
+    /* T = 27 - (V - 0.706)/0.001721, in tenths */
+    return 270 - (int)(((int64_t)uv - 706000) * 10 / 1721);
+}
+
 static ui_test_state_t t_silicon(const detect_result_t *d, char *detail,
                                  unsigned len, test_progress_fn p) {
     (void)p;
 
     const unsigned mv  = core_mv();
     const unsigned mhz = (unsigned)(clock_get_hz(clk_sys) / 1000000u);
+    const int      dc  = die_decidegrees();
 
     /* The voltage is worth a row of its own only when it is unusual. At
      * the stock 1.10 V it is noise; anything else is a deliberate
      * overvolt and the first thing to know when a board is unstable. */
     if (mv)
-        snprintf(detail, len, "%s rev %u, %u MHz, %u.%02u V",
+        snprintf(detail, len, "%s r%u, %u MHz, %u.%02u V, %d.%d C",
                  frank_mcu_class_name(d->mcu), (unsigned)d->chip_rev,
-                 mhz, mv / 1000u, (mv % 1000u) / 10u);
+                 mhz, mv / 1000u, (mv % 1000u) / 10u,
+                 dc / 10, (dc < 0 ? -dc : dc) % 10);
     else
-        snprintf(detail, len, "%s rev %u, %u MHz",
-                 frank_mcu_class_name(d->mcu), (unsigned)d->chip_rev, mhz);
+        snprintf(detail, len, "%s r%u, %u MHz, %d.%d C",
+                 frank_mcu_class_name(d->mcu), (unsigned)d->chip_rev, mhz,
+                 dc / 10, (dc < 0 ? -dc : dc) % 10);
 
     return TEST_PASS;
 }

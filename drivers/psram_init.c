@@ -18,6 +18,16 @@
 #define PSRAM_MAX_FREQ_MHZ 133
 #endif
 
+/* Settable at run time, because the overclock dialog drives it. The
+ * build-time value is the default rather than the only choice: the
+ * divider is derived from this and the system clock, so a board being
+ * pushed needs to be able to move both. */
+static unsigned s_max_freq_mhz = PSRAM_MAX_FREQ_MHZ;
+
+void psram_set_max_freq(unsigned mhz) {
+    if (mhz >= 20u && mhz <= 200u) s_max_freq_mhz = mhz;
+}
+
 void __no_inline_not_in_flash_func(psram_init)(uint cs_pin) {
     const int clock_hz = clock_get_hz(clk_sys); 
 
@@ -33,7 +43,7 @@ void __no_inline_not_in_flash_func(psram_init)(uint cs_pin) {
     while (qmi_hw->direct_csr & QMI_DIRECT_CSR_BUSY_BITS);
 
 
-    const int max_psram_freq = PSRAM_MAX_FREQ_MHZ * 1000000; 
+    const int max_psram_freq = (int)s_max_freq_mhz * 1000000; 
     
     int divisor = (clock_hz + max_psram_freq - 1) / max_psram_freq;
     if (divisor == 1 && clock_hz > 100000000) {

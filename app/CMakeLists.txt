@@ -43,6 +43,7 @@ add_executable(frank-test
     dlg_nespad.c
     report.c
     dlg_burnin.c
+    dlg_overclock.c
     dlg_led.c
     dlg_ps2.c
     dlg_tape.c
@@ -133,7 +134,7 @@ endif()
 
 target_link_libraries(frank-test
     frank_core frank_ui frank_ui_video pico_hdmi ${_hid}
-    pico_stdlib hardware_pio hardware_dma hardware_pwm hardware_spi)
+    pico_stdlib hardware_pio hardware_dma hardware_pwm hardware_spi hardware_adc)
 
 # UART only. The USB controller is now a HID *host* so keyboards and mice
 # can be tested, and it cannot simultaneously enumerate as a CDC device.

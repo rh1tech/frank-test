@@ -26,6 +26,8 @@
 #include "detect.h"
 #include "dlgs.h"
 #include "report.h"
+#include "oc_request.h"
+#include "psram_init.h"
 #include "frank_audio.h"
 #include "mem_test.h"
 #include "registry.h"
@@ -576,6 +578,14 @@ static void do_command(int cmd) {
          * start-up and there is no safe way to hand them back to a UART
          * underneath a running PS/2 state machine, so this takes effect
          * on the next boot and the dialog says so. */
+        case CMD_OVERCLOCK: {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            dlg_overclock(&ctx);
+            redraw();
+            break;
+        }
+
         case CMD_REPORT: {
             char name[32];
             const report_result_t rr =
@@ -831,17 +841,41 @@ int main(void) {
      * which is what 640x480@60 TMDS needs. ui_video_hstx.c also sets
      * clk_hstx explicitly, so the video path survives a different choice
      * here — but this is the pairing frank_core2u ships and is proven. */
-    /* The regulator is deliberately left alone. 252 MHz is within the
-     * RP2350's stock operating point and needs no help; raising the core
-     * to 1.50 V for it is a large overvolt against a 1.10 V nominal and
-     * pushes flash and USB timing out of spec for nothing. frank-msx
-     * runs this same clock on this same hardware without touching vreg,
-     * and says as much in its own bring-up. Only an overclock past 252
-     * would justify it, and then the flash timings have to move too. */
-    set_flash_timings(252, 88);
+    /* Defaults, unless the last boot was asked to try something else.
+     *
+     * The regulator is left alone at 252 MHz: that is within the
+     * RP2350's stock operating point, and raising the core to 1.50 V for
+     * it is a large overvolt against a 1.10 V nominal that pushes flash
+     * and USB timing out of spec for nothing. frank-msx runs this same
+     * clock on this same hardware without touching vreg. An overclock
+     * past 252 is the case that justifies it, and then the flash
+     * timings have to move with it. */
+    oc_request_t oc = { .cpu_mhz = 252, .vreg_sel = 0,
+                        .psram_mhz = 133, .flash_mhz = 88 };
+    const bool overclocked = oc_request_take(&oc);
+
+    if (overclocked && oc.vreg_sel) {
+        /* Above 1.30 V the limit has to come off first, or the write is
+         * refused and the clock then runs at stock voltage - which is
+         * how an overclock fails in a way that looks like bad silicon
+         * rather than like a setting. */
+        vreg_disable_voltage_limit();
+        vreg_set_voltage((enum vreg_voltage)oc.vreg_sel);
+        sleep_ms(10);
+    }
+
+    set_flash_timings(oc.cpu_mhz, oc.flash_mhz);
     sleep_ms(10);
-    if (!set_sys_clock_khz(252000, false))
+
+    /* The fallback matters more here than usual. An unreachable clock
+     * leaves the board running at whatever it managed, and half the
+     * point of the dialog is being able to find that edge without
+     * bricking anything. */
+    if (!set_sys_clock_khz((uint)oc.cpu_mhz * 1000u, false))
         set_sys_clock_khz(126000, false);
+
+    psram_set_max_freq(oc.psram_mhz);
+    oc_request_note_applied(&oc);
 
     /* NOT overclocked for composite, and the reason is worth recording.
      *

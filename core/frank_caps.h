@@ -42,6 +42,7 @@ typedef enum {
     FRANK_BOARD_CORE2,            /* RP2350B + RP2350A                  */
     FRANK_BOARD_CORE2U,           /* as CORE2, + tape + USB hub/mux     */
     FRANK_BOARD_NEXT,             /* RP2350B + ESP32                    */
+    FRANK_BOARD_Z0PA,             /* Waveshare RP2350-PiZero            */
 
     FRANK_BOARD_COUNT
 } frank_board_id_t;
