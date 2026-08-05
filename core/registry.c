@@ -27,8 +27,6 @@ extern const frank_test_t frank_tests_sd[];
 extern const unsigned     frank_tests_sd_len;
 extern const frank_test_t frank_tests_esp[];
 extern const unsigned     frank_tests_esp_len;
-extern const frank_test_t frank_tests_audio[];
-extern const unsigned     frank_tests_audio_len;
 
 /* Flattened once at first use. */
 static frank_test_t all[40];
@@ -47,8 +45,6 @@ static void gather(void) {
         all[all_len++] = frank_tests_sd[i];
     for (unsigned i = 0; i < frank_tests_esp_len && all_len < 40; i++)
         all[all_len++] = frank_tests_esp[i];
-    for (unsigned i = 0; i < frank_tests_audio_len && all_len < 40; i++)
-        all[all_len++] = frank_tests_audio[i];
     for (unsigned i = 0; i < frank_tests_link_len && all_len < 40; i++)
         all[all_len++] = frank_tests_link[i];
 }

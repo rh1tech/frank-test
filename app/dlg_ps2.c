@@ -242,8 +242,10 @@ void dlg_ps2(const dlg_ctx_t *c) {
             if (ui_ps2_mouse_read(&dx, &dy, &wheel, &buttons)) {
                 if (dx || dy || wheel) m.packets++;
                 m.x += dx; m.y += dy; m.wheel += wheel;
-                if (m.x < -999) m.x = -999; if (m.x > 999) m.x = 999;
-                if (m.y < -999) m.y = -999; if (m.y > 999) m.y = 999;
+                if (m.x < -999) m.x = -999;
+                if (m.x >  999) m.x =  999;
+                if (m.y < -999) m.y = -999;
+                if (m.y >  999) m.y =  999;
             }
             m.buttons = buttons;
         }

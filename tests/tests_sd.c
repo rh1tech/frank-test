@@ -56,6 +56,7 @@
 #include "registry.h"
 
 #include "hardware/gpio.h"
+#include "hardware/spi.h"
 #include "pico/stdlib.h"
 
 #include <stdio.h>
@@ -449,9 +450,144 @@ static ui_test_state_t t_sd_read(const detect_result_t *d, char *detail,
     return TEST_NORUN;
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Throughput                                                          */
+/* ------------------------------------------------------------------ */
+
+/* Read speed, over the hardware SPI rather than the bit-banged one.
+ *
+ * The rest of this file bangs the bus by hand, deliberately - a probe
+ * that moves forty bytes has no use for a peripheral, and a bit-banged
+ * one cannot leave a half-configured SPI block behind it. But timing
+ * that path would measure this firmware's inner loop and call it a card,
+ * which is not a number anyone wants.
+ *
+ * So this hands the same four pins to the SPI block for the duration and
+ * gives them back. Every board wires the socket to a pin quartet that
+ * maps onto an instance - RX, CSn, SCK, TX in that order within a group
+ * of eight - and the mapping is checked rather than assumed, because a
+ * board that broke the pattern would otherwise get a confident number
+ * off pins that are not connected to anything.
+ *
+ * CMD18 rather than a loop of CMD17: a multi-block read is one command
+ * and then data until told to stop, so the figure is the transfer rather
+ * than the per-command overhead. Chip select is left as plain GPIO and
+ * driven by hand, because the block's own CS deasserts between transfers
+ * and an SD card treats that as the end of the read.
+ */
+#define SPEED_SECTORS 1024u          /* 512 KiB, about a second at 4 MB/s */
+#define SPI_HZ        12500000u      /* well inside the 25 MHz SPI-mode ceiling */
+
+static spi_inst_t *spi_for(const sd_pins_t *p) {
+    /* Within each group of eight GPIOs the SPI functions run RX, CSn,
+     * SCK, TX and then repeat; alternate groups belong to alternate
+     * instances. */
+    if ((p->miso & 3u) != 0u || (p->cs & 3u) != 1u ||
+        (p->clk  & 3u) != 2u || (p->mosi & 3u) != 3u) return NULL;
+    if ((p->miso / 8u) != (p->clk / 8u) || (p->clk / 8u) != (p->mosi / 8u))
+        return NULL;
+
+    return ((p->clk / 8u) & 1u) ? spi1 : spi0;
+}
+
+static ui_test_state_t t_sd_speed(const detect_result_t *d, char *detail,
+                                  unsigned len, test_progress_fn p) {
+    sd_pins_t sp;
+    if (!pins_from(&d->board->pins, &sp)) {
+        snprintf(detail, len, "no SD pins");
+        return TEST_NORUN;
+    }
+    if (!s_card.present) {
+        snprintf(detail, len, "no card identified");
+        return TEST_NORUN;
+    }
+
+    spi_inst_t *spi = spi_for(&sp);
+    if (!spi) {
+        snprintf(detail, len, "pins are not an SPI quartet");
+        return TEST_NORUN;
+    }
+
+    /* CS stays a GPIO: the block would drop it between transfers and the
+     * card would end the read. */
+    const unsigned hz = spi_init(spi, SPI_HZ);
+    spi_set_format(spi, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    gpio_set_function(sp.clk,  GPIO_FUNC_SPI);
+    gpio_set_function(sp.mosi, GPIO_FUNC_SPI);
+    gpio_set_function(sp.miso, GPIO_FUNC_SPI);
+
+    static uint8_t buf[512];
+    unsigned  sectors = 0;
+    bool      ok      = true;
+
+    gpio_put(sp.cs, 0);
+    spi_write_blocking(spi, (const uint8_t[]){0xFF}, 1);
+
+    /* CMD18, from sector zero. Byte address on the older cards. */
+    const uint32_t arg = s_card.block_addressed ? 0u : 0u;
+    const uint8_t  cmd[6] = { 0x40u | 18u,
+                              (uint8_t)(arg >> 24), (uint8_t)(arg >> 16),
+                              (uint8_t)(arg >> 8),  (uint8_t)arg, 0x01u };
+    spi_write_blocking(spi, cmd, sizeof(cmd));
+
+    uint8_t r = 0xFF;
+    for (int i = 0; i < 16 && r == 0xFF; i++) spi_read_blocking(spi, 0xFF, &r, 1);
+    if (r != 0x00) ok = false;
+
+    const absolute_time_t t0 = get_absolute_time();
+
+    while (ok && sectors < SPEED_SECTORS) {
+        /* Wait for the data token that opens each block. */
+        uint8_t tok = 0xFF;
+        for (int i = 0; i < 4000 && tok == 0xFF; i++)
+            spi_read_blocking(spi, 0xFF, &tok, 1);
+        if (tok != 0xFE) { ok = false; break; }
+
+        spi_read_blocking(spi, 0xFF, buf, sizeof(buf));
+        uint8_t crc[2];
+        spi_read_blocking(spi, 0xFF, crc, sizeof(crc));
+
+        sectors++;
+        if (p && (sectors % 64u) == 0u)
+            p((int)((sectors * 1000u) / SPEED_SECTORS), NULL);
+    }
+
+    const int64_t us = absolute_time_diff_us(t0, get_absolute_time());
+
+    /* CMD12 stops the stream. Without it the card keeps sending and the
+     * next command lands in the middle of a block. */
+    const uint8_t stop[6] = { 0x40u | 12u, 0, 0, 0, 0, 0x01u };
+    spi_write_blocking(spi, stop, sizeof(stop));
+    for (int i = 0; i < 16; i++) { uint8_t x; spi_read_blocking(spi, 0xFF, &x, 1); }
+    gpio_put(sp.cs, 1);
+
+    /* Hand the pins back, so a re-run of the tests above finds them as
+     * they expect and not driven by a peripheral. */
+    spi_deinit(spi);
+    sd_pins_init(&sp);
+
+    if (p) p(1000, NULL);
+
+    if (!ok || sectors == 0 || us <= 0) {
+        snprintf(detail, len, "read stalled after %u sectors", sectors);
+        return TEST_FAIL;
+    }
+
+    /* KiB/s in integer arithmetic, then shown as MiB/s to two places. */
+    const uint32_t kibps = (uint32_t)(((uint64_t)sectors * 512u * 1000000u) /
+                                      ((uint64_t)us * 1024u));
+    snprintf(detail, len, "%lu.%02lu MiB/s at %u MHz",
+             (unsigned long)(kibps / 1024u),
+             (unsigned long)(((kibps % 1024u) * 100u) / 1024u),
+             hz / 1000000u);
+    return TEST_PASS;
+}
+
 const frank_test_t frank_tests_sd[] = {
     { "SD card", ICON_DISK, CAP_SD, 0, t_sd      },
     { "SD read", ICON_DISK, CAP_SD, 0, t_sd_read },
+    { "SD speed", ICON_DISK, CAP_SD, 0, t_sd_speed },
 };
 
 const unsigned frank_tests_sd_len =
