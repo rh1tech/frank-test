@@ -709,10 +709,22 @@ static void run_all(void) {
         stdio_flush();
     }
 
-    /* Leave the selection where the run left it rather than clearing it:
-     * "Run Selected" needs something to act on, and an empty selection
-     * with an enabled menu item is the question that prompted this. */
-    if (g_desk.selected < 0 && g_results.count) g_desk.selected = 0;
+    /* Back to the top when the run finishes.
+     *
+     * The run scrolls as it goes, so it ends parked on the last test -
+     * which on a full board is Slave reset, three screens down, and
+     * almost never what anyone wants to look at. The interesting rows
+     * are at the top and the summary reads from there, so a finished run
+     * leaves the list where a fresh one starts.
+     *
+     * The selection follows rather than being cleared: "Run Selected"
+     * needs something to act on, and an enabled menu item with nothing
+     * selected was the question that put this line here in the first
+     * place. */
+    if (g_results.count) {
+        g_desk.selected      = 0;
+        g_desk.first_visible = 0;
+    }
     redraw();
 
     printf("\n[run] %u passed, %u failed, %u n/a, %u could not run\n",
