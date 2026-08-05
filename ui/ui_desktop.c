@@ -171,6 +171,11 @@ static void draw_state(ui_surface_t *s, int x, int y, const ui_test_row_t *r) {
 #define reclip ui_clip_reset
 
 #define ROW_H      20
+/* A wrapped row is two lines with the same margins a single line gets:
+ * six above, six below, two between. Anything less and the second line
+ * sits tight against the row below it, which reads as a different row. */
+#define ROW_H_WRAP 30
+#define BAR_W      13
 #define LIST_X     14
 #define LIST_PAD   12                      /* gap under the menu bar */
 #define LIST_Y     (UI_MENUBAR_H + LIST_PAD)
@@ -184,6 +189,53 @@ static void draw_state(ui_surface_t *s, int x, int y, const ui_test_row_t *r) {
 
 #define INFO_X     (LIST_X + LIST_W + 14)
 #define INFO_W     182
+
+/* ------------------------------------------------------------------ */
+/* List geometry                                                       */
+/* ------------------------------------------------------------------ */
+
+/* What the last draw actually laid out.
+ *
+ * Hit-testing and scrolling used to repeat the sums from a copy of the
+ * constants in main.c, with a hardcoded row count beside them. That was
+ * survivable while every row was the same height and wrong the moment
+ * one of them wrapped - and it had already drifted: the copy said twenty
+ * rows fit, the draw fitted more, and the scroll bar never appeared
+ * because the two disagreed about whether anything overflowed.
+ *
+ * The draw records what it did instead, and everything else reads it. */
+static struct {
+    int cx, cy, cw, ch;
+    int y[40];
+    int h[40];
+    int count;
+} s_geom;
+
+/* Where the detail column ends and how wide it may be. Kept beside the
+ * drawing that uses it so the two cannot drift apart. */
+static int detail_avail(int list_w) {
+    return (list_w - 22) - 176;
+}
+
+static int row_height(const ui_test_row_t *r, int list_w) {
+    if (!r->detail || r->state == TEST_RUNNING) return ROW_H;
+    return (ui_text_width(r->detail) <= detail_avail(list_w)) ? ROW_H
+                                                              : ROW_H_WRAP;
+}
+
+int ui_desktop_hit_row(const ui_desktop_t *d, int x, int y) {
+    if (x < s_geom.cx || x >= s_geom.cx + s_geom.cw) return -1;
+    for (int i = 0; i < s_geom.count; i++) {
+        if (y < s_geom.y[i] || y >= s_geom.y[i] + s_geom.h[i]) continue;
+        const int idx = d->first_visible + i;
+        return (idx < d->row_count) ? idx : -1;
+    }
+    return -1;
+}
+
+int ui_desktop_rows_shown(void) {
+    return s_geom.count ? s_geom.count : 1;
+}
 
 static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
     /* No close box, no scroll bar, no grow box. Nothing in this
@@ -201,33 +253,45 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
     int cx, cy, cw, ch;
     ui_window_content(&w, &cx, &cy, &cw, &ch);
 
-    /* The scroll bar takes its width off the rows when there is more
-     * list than window. Reserving it unconditionally would waste the
-     * column on every board whose tests happen to fit, and the detail
-     * text is what pays for it. */
-    const bool  scrolling = d->row_count > (ch / ROW_H);
-    const int   bar_w     = scrolling ? 13 : 0;
-    const int   list_w    = cw - bar_w;
-    const int   visible   = ch / ROW_H;
+    /* The bar's width comes off the rows unconditionally, even when it
+     * is not drawn. Deciding it from whether the list overflows makes
+     * the wrap width depend on the row heights, which depend on the wrap
+     * width; reserving it always costs thirteen pixels of detail column
+     * and removes the circle. */
+    const int list_w = cw - BAR_W;
 
-    for (int i = 0; i < visible; i++) {
-        int idx = d->first_visible + i;
-        if (idx >= d->row_count) break;
+    s_geom.cx = cx; s_geom.cy = cy; s_geom.cw = cw; s_geom.ch = ch;
+    s_geom.count = 0;
 
+    int y = cy;
+    for (int i = 0; i + d->first_visible < d->row_count; i++) {
+        const int idx = d->first_visible + i;
         const ui_test_row_t *r = &d->rows[idx];
-        int y = cy + i * ROW_H;
+
+        const int row_h = row_height(r, list_w);
+        if (y + row_h > cy + ch) break;
+
+        /* Remembered so hit-testing and scrolling use the geometry that
+         * was actually drawn rather than a second copy of the sums. */
+        if (s_geom.count < (int)(sizeof(s_geom.y) / sizeof(s_geom.y[0]))) {
+            s_geom.y[s_geom.count] = y;
+            s_geom.h[s_geom.count] = row_h;
+            s_geom.count++;
+        }
 
         /* Alternating row tint: a long list of identical rows is much
          * harder to track across than one with a rhythm. */
-        if (idx & 1) ui_fill(s, cx, y, list_w, ROW_H - 1, UI_GREY_1);
+        if (idx & 1) ui_fill(s, cx, y, list_w, row_h - 1, UI_GREY_1);
 
         const bool sel = (idx == d->selected);
-        if (sel) ui_fill(s, cx, y, list_w, ROW_H - 1, UI_ACCENT_L);
+        if (sel) ui_fill(s, cx, y, list_w, row_h - 1, UI_ACCENT_L);
 
         /* No drop shadow on these: the 16x16 art is dense enough that a
          * one-pixel offset copy closes the gaps and turns a chip into a
          * blob. The shadow earns its place only on the larger, sparser
          * icons — see the Board window. */
+        /* The icon and the name stay on the first line whatever the row
+         * height, so a wrapped row still scans as one entry. */
         ui_blit_tinted(s, ui_icon(r->icon), cx + 2, y + 2, UI_BLACK);
         ui_text(s, cx + 24, y + 6, r->name, UI_BLACK);
 
@@ -272,21 +336,23 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
                     memcpy(head, r->detail, (size_t)cut);
                     head[cut] = '\0';
                     const char *tail = r->detail + cut + 1;
-                    ui_text(s, right - ui_text_width(head), y + 1, head, ink);
-                    ui_text(s, right - ui_text_width(tail), y + 10, tail, ink);
+                    ui_text(s, right - ui_text_width(head), y + 6,  head, ink);
+                    ui_text(s, right - ui_text_width(tail), y + 16, tail, ink);
                 }
             }
         }
 
         draw_state(s, cx + list_w - 18, y + 2, r);
 
-        if (i + 1 < visible)
-            ui_hline(s, cx, y + ROW_H - 1, list_w, UI_GREY_2);
+        ui_hline(s, cx, y + row_h - 1, list_w, UI_GREY_2);
+        y += row_h;
     }
 
-    if (scrolling)
-        ui_scrollbar(s, cx + cw - bar_w, cy, ch,
-                     d->row_count, visible, d->first_visible);
+    /* Drawn whenever the whole list does not fit, which is now measured
+     * from what was laid out rather than assumed from a fixed count. */
+    if (d->first_visible > 0 || s_geom.count < d->row_count)
+        ui_scrollbar(s, cx + cw - BAR_W, cy, ch,
+                     d->row_count, s_geom.count, d->first_visible);
 
     reclip(s);
 }

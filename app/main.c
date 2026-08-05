@@ -159,12 +159,6 @@ static void redraw(void) {
     g_dirty = false;
 }
 
-/* Rows that fit in the list window's content area. Must track
- * ui_desktop.c's LIST_H, which now runs to the same bottom margin as the
- * top one: (480 - 32 - 12) - UI_TITLE_H - 2*UI_WIN_PAD, divided by the
- * row height. */
-#define VISIBLE_ROWS 20
-
 /* Compose the desktop without publishing it.
  *
  * The modal dialogs draw on top of this and present once, so the
@@ -187,7 +181,7 @@ static void paint_desktop(void) {
 /* Keep the running test visible. The list is longer than the window, and
  * a run that scrolls off the bottom looks stalled. */
 static void follow(unsigned i) {
-    const int visible = VISIBLE_ROWS;
+    const int visible = ui_desktop_rows_shown();
     if ((int)i < g_desk.first_visible)            g_desk.first_visible = (int)i;
     if ((int)i >= g_desk.first_visible + visible) g_desk.first_visible = (int)i - visible + 1;
     g_desk.selected = (int)i;
@@ -288,37 +282,30 @@ static void gate_menus(void) {
 /* Selection and hit-testing                                           */
 /* ------------------------------------------------------------------ */
 
-/* Must match ui_desktop.c's layout. Duplicated rather than exported
- * because the alternative is the interface publishing its geometry, and
- * then every caller depending on it. One place gets to be wrong. */
-#define ROW_H_APP   20
-#define LIST_X_APP  14
-#define LIST_Y_APP  (UI_MENUBAR_H + 12)
-#define LIST_W_APP  416
-
-
+/* The interface publishes what it drew.
+ *
+ * This used to be a copy of ui_desktop.c's constants with a fixed row
+ * count beside them, on the reasoning that one place should get to be
+ * wrong rather than two. The copy drifted - it believed twenty rows fit
+ * where the draw fitted more, which is why the scroll bar never appeared
+ * - and rows stopped being a fixed height once a long detail started
+ * wrapping onto a second line. Asking is now the only thing that can be
+ * right. */
 static int hit_row(int x, int y) {
-    const int cx = LIST_X_APP + 1 + UI_WIN_PAD;
-    const int cy = LIST_Y_APP + UI_TITLE_H + UI_WIN_PAD;
-    if (x < cx || x > LIST_X_APP + LIST_W_APP) return -1;
-    if (y < cy) return -1;
-    int i = (y - cy) / ROW_H_APP;
-    if (i < 0 || i >= VISIBLE_ROWS) return -1;
-    int idx = g_desk.first_visible + i;
-    return (idx < (int)g_results.count) ? idx : -1;
+    return ui_desktop_hit_row(&g_desk, x, y);
 }
 
 static void scroll_to_selection(void) {
     if (g_desk.selected < 0) return;
     if (g_desk.selected < g_desk.first_visible)
         g_desk.first_visible = g_desk.selected;
-    if (g_desk.selected >= g_desk.first_visible + VISIBLE_ROWS)
-        g_desk.first_visible = g_desk.selected - VISIBLE_ROWS + 1;
+    if (g_desk.selected >= g_desk.first_visible + ui_desktop_rows_shown())
+        g_desk.first_visible = g_desk.selected - ui_desktop_rows_shown() + 1;
 }
 
 static void scroll_by(int rows) {
     g_desk.first_visible += rows;
-    int max = (int)g_results.count - VISIBLE_ROWS;
+    int max = (int)g_results.count - ui_desktop_rows_shown();
     if (max < 0) max = 0;
     if (g_desk.first_visible > max) g_desk.first_visible = max;
     if (g_desk.first_visible < 0)   g_desk.first_visible = 0;

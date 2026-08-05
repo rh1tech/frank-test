@@ -144,4 +144,13 @@ const ui_menubar_t *ui_desktop_menus(void);
 void ui_desktop_set_cmd_enabled(int cmd, bool enabled);
 void ui_desktop_set_cmd_checked(int cmd, bool checked);
 
+/* The test list's geometry, as the last draw laid it out.
+ *
+ * Rows are not all the same height: a detail too wide for its row wraps
+ * onto a second line and takes the space for it. So callers ask rather
+ * than multiplying by a row height, which is also what stops the answer
+ * drifting from what is on screen. */
+int ui_desktop_hit_row(const ui_desktop_t *d, int x, int y);
+int ui_desktop_rows_shown(void);
+
 #endif /* UI_DESKTOP_H */
