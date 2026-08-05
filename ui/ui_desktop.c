@@ -187,8 +187,19 @@ static void draw_state(ui_surface_t *s, int x, int y, const ui_test_row_t *r) {
 /* The same gap at the bottom as at the top. It was a fixed 390, which
  * left a 58-pixel band of bare desktop under the window and read as the
  * layout having run out rather than as deliberate margin. Deriving it
- * from LIST_PAD means the two can no longer drift apart. */
-#define LIST_H     (UI_SCREEN_H - LIST_Y - LIST_PAD)
+ * from LIST_PAD means the two can no longer drift apart.
+ *
+ * Then rounded down to a whole number of rows. The window is the only
+ * part of this layout free to be any height, and a content area that is
+ * not a multiple of the row height has to end in either a band of bare
+ * grey or a row sliced through the middle - and having tried both, the
+ * sliced row is worse: it looks like a drawing fault rather than like a
+ * list continuing. Taking the remainder off the height instead puts it
+ * in the margin below, where it reads as margin. */
+#define LIST_CHROME (UI_TITLE_H + UI_WIN_PAD * 2 + 1)
+#define LIST_H_RAW  (UI_SCREEN_H - LIST_Y - LIST_PAD)
+#define LIST_ROWS   ((LIST_H_RAW - LIST_CHROME) / ROW_H)
+#define LIST_H      (LIST_CHROME + LIST_ROWS * ROW_H)
 
 #define INFO_X     (LIST_X + LIST_W + 14)
 #define INFO_W     182
@@ -333,11 +344,11 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
 
         const int row_h = row_height(r, list_w);
 
-        /* Started, not finished, is fine. A row that only partly fits is
-         * drawn and clipped, which fills the tail of the window and
-         * shows there is more below; stopping at the last whole row left
-         * a band of empty grey that looked like the end of the list. */
-        if (y >= cy + ch) break;
+        /* Whole rows only. The window's height is a multiple of the
+         * plain row height, so this leaves nothing behind in the usual
+         * case; a wrapped row can still leave a gap of up to a row, and
+         * a gap is better than a row cut through the middle. */
+        if (y + row_h > cy + ch) break;
 
         /* Remembered so hit-testing and scrolling use the geometry that
          * was actually drawn rather than a second copy of the sums. */
