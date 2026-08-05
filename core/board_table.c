@@ -95,13 +95,6 @@ static const pinsig_entry_t sig_core2_slave[] = {
 
 /* --- RP2350B class ------------------------------------------------- */
 
-static const pinsig_entry_t sig_nyx[] = {
-    { 47, PINSIG_HIGH },                       /* PSRAM CE, 10K          */
-    { 0, PINSIG_FLOAT }, { 1, PINSIG_FLOAT },
-    { 12, PINSIG_FLOAT }, { 20, PINSIG_FLOAT },
-    { 28, PINSIG_FLOAT }, { 43, PINSIG_FLOAT },
-};
-
 static const pinsig_entry_t sig_frank_pga[] = {
     { 0, PINSIG_HIGH }, { 1, PINSIG_HIGH },
     { 2, PINSIG_HIGH }, { 3, PINSIG_HIGH },    /* TXS0104 A-side, 10K    */
@@ -376,19 +369,6 @@ const frank_board_desc_t frank_board_table[] = {
 },
 
 
-/* ---------------------------------------------------------------- */
-{
-    .id = FRANK_BOARD_NYX, .name = "Nyx", .slug = "nyx",
-    .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
-    .caps = CAP_PSRAM_QMI | CAP_USB_DEVICE | CAP_LED_PLAIN,
-    .pins = { PINS_NONE, PINS_UART01, .led_plain = 25, .psram_cs = 47 },
-    SIG(sig_nyx),
-    .flash_bytes = 16u * 1024u * 1024u,
-    .psram_bytes = 8u * 1024u * 1024u,
-    .manual_note = "Breakout board: GP0-22 and GP26-28 go to headers J1/J3 "
-                   "and nothing else. Only silicon, flash and PSRAM can be "
-                   "tested without external wiring.",
-},
 
 /* ---------------------------------------------------------------- */
 /* core2 and core2u share a pin map exactly; core2u adds tape on GP45.

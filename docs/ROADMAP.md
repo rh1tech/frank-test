@@ -102,8 +102,15 @@ whether you see red, then green, then blue, rather than in a pass/fail row.
 Mostly worth doing because a WS2812 that stays dark is usually a data-line fault,
 and that is worth catching.
 
-Built as `Tests` ▸ `LEDs`. The WS2812 is bit-banged rather than given a PIO state
-machine, because there is not one going spare — pio0 has the link, pio1 the I2S
+Built as `Tests` ▸ `LEDs`, as one sequence whatever the board carries: the plain
+LED blinks three times, then the WS2812 fades up and down through red, green and
+blue. A board with only one of the two runs only that part.
+
+Fading rather than switching, because a fade is much harder to fake. A marginal
+data line usually still manages full brightness and falls apart in the middle of
+the range, where a bit error turns a dim red into a bright green.
+
+The WS2812 is bit-banged rather than given a PIO state machine, because there is not one going spare — pio0 has the link, pio1 the I2S
 and PS/2, pio2 the gamepad reader and the composite encoder — and taking one here
 would mean taking it from something that is also a test. Interrupts are masked
 for the 30 microseconds a frame takes, which is safe only because the video

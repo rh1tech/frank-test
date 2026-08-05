@@ -270,9 +270,9 @@ static bool tier1_consistent(const detect_result_t *r,
  *
  * Counting absolute matches compares signatures of different lengths as
  * though they were the same evidence, and the failure is not academic:
- * on a core2 master, `nyx` matched 6 of its 7 pins and `core2` matched 6
+ * on a core2 master, `zerofrank` matched 6 of its 7 pins and `core2` matched 6
  * of 6, which scored identically and produced a spurious three-way
- * ambiguity — with `nyx` first in the list. The one pin nyx got wrong
+ * ambiguity — with the wrong one first in the list. The pin it got wrong
  * was GP43, the 10K pull-up that is precisely what distinguishes them.
  *
  * A ratio makes a single mismatch decisive, which it should be: these
@@ -319,7 +319,7 @@ static void tier2_fingerprint(detect_result_t *r,
      * Those are different sets and the difference matters, because this
      * list is what the operator is asked to choose from. On a core2
      * master with the link peer briefly silent, the viable set included
-     * `nyx` — which the fingerprint had already ranked well below the
+     * the breakout — which the fingerprint had already ranked well below the
      * other two — and it appeared as option 1 in the dialog. Offering a
      * board the evidence has ruled out is a good way to have it picked. */
     r->candidate_count = 0;

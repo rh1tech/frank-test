@@ -57,7 +57,6 @@ output, driven entirely from the keyboard.
 | microFRANK | RP2350A | |
 | zeroFRANK | RP2350A | |
 | OldSkoolFRANK | RP2350A | DB9 gamepads |
-| Nyx | RP2350A | No USB host, no PS/2 |
 | FRANK Core 2 | RP2350B + RP2350A | Inter-processor link |
 | FRANK Core 2U | RP2350B + RP2350A | As Core 2, plus tape and a USB hub |
 | FRANK Next | RP2350B | TLV320 codec |
@@ -89,7 +88,7 @@ GPIO the package does not have.
 | Board | Image |
 |---|---|
 | miniFRANK, microFRANK, zeroFRANK | `rp2350a` |
-| MegaFRANK, Nyx, OldSkoolFRANK, FRANK Next | `rp2350b` |
+| MegaFRANK, OldSkoolFRANK, FRANK Next | `rp2350b` |
 | FRANK PGA | `rp2350b` — a PGA2350 is always the B package |
 | FRANK | whichever module is in the socket: a Pico 2 is `rp2350a`, a Pico Plus 2 is `rp2350b` |
 | FRANK Core 2, Core 2U — master | `rp2350b` |

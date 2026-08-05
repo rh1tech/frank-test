@@ -36,7 +36,11 @@
 #include <stdint.h>
 
 #define FRANKID_MAGIC    0x4B4E5246u   /* "FRNK", little-endian */
-#define FRANKID_VERSION  1u
+/* 2: FRANK_BOARD_NYX was removed and every id after it moved down one,
+ * so a version 1 record naming a board is naming a different board now.
+ * settings_load() rejects anything that is not exactly this, which costs
+ * a stored identity once and is better than a confident wrong answer. */
+#define FRANKID_VERSION  2u
 
 typedef struct {
     uint32_t magic;

@@ -9,7 +9,7 @@
 /*
  * ui_input.h — pointer and keyboard, from whatever is attached.
  *
- * The interface has to be complete without a mouse. `nyx` has no USB
+ * The interface has to be complete without a mouse. `zerofrank` has no USB
  * host and no PS/2 connector; the core2 halves have no PS/2 either. On
  * those boards the only input is the UART, so every menu command has a
  * keyboard equivalent and nothing is reachable by clicking alone.

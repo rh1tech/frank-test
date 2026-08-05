@@ -39,7 +39,6 @@ typedef enum {
     FRANK_BOARD_MINIFRANK,        /* RP2350A, HDMI + VGA                */
     FRANK_BOARD_ZEROFRANK,        /* RP2350A, HDMI + PIO-USB            */
     FRANK_BOARD_OLDSKOOLFRANK,    /* PGA2350, TDA1545A, DB9             */
-    FRANK_BOARD_NYX,              /* RP2350B breakout                   */
     FRANK_BOARD_CORE2,            /* RP2350B + RP2350A                  */
     FRANK_BOARD_CORE2U,           /* as CORE2, + tape + USB hub/mux     */
     FRANK_BOARD_NEXT,             /* RP2350B + ESP32                    */

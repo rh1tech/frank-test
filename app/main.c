@@ -1015,7 +1015,7 @@ int main(void) {
      *
      * Keyboard first and completely: Alt+F/B/V/T/W open menus, arrows
      * navigate, Enter activates, Esc closes. Every command in the menu
-     * bar is reachable without a pointer, because on `nyx` and the core2
+     * bar is reachable without a pointer, because on `zerofrank` and the core2
      * halves there is no pointing device to reach it with.
      * --------------------------------------------------------------- */
     while (true) {

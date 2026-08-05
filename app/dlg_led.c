@@ -23,6 +23,22 @@
  * data-line fault rather than a dead part, and that is worth catching.
  *
  *
+ * ONE SEQUENCE, WHATEVER THE BOARD HAS
+ *
+ * The plain LED blinks first, then the WS2812 fades up and down through
+ * red, green and blue. Boards with only one of the two run only that
+ * part and the dialog closes the loop at the end of it, so there is
+ * nothing to configure and nothing board-specific to remember.
+ *
+ * Fading rather than switching, for the addressable one, because a fade
+ * is much harder to fake. A data line that is marginal — a long stub, a
+ * missing series resistor, a cold joint — usually still manages full
+ * brightness and falls apart in the middle of the range, where a bit
+ * error turns a dim red into a bright green. Watching it climb smoothly
+ * and come back down tests the protocol far harder than three static
+ * colours ever did.
+ *
+ *
  * THE WS2812 IS BIT-BANGED
  *
  * It wants one PIO state machine and there is not one going spare: pio0
@@ -91,15 +107,36 @@ static void __not_in_flash_func(ws2812_send)(unsigned pin, uint32_t grb,
 
 /* ------------------------------------------------------------------ */
 
-static const struct { const char *name; uint32_t grb; uint8_t ink; } s_steps[] = {
-    { "red",   0x00FF00u, UI_FAIL   },
-    { "green", 0xFF0000u, UI_OK     },
-    { "blue",  0x0000FFu, UI_ACCENT },
-    { "off",   0x000000u, UI_GREY_4 },
+/* The three primaries, in the order the eye finds easiest to judge. The
+ * component is scaled by the fade level rather than switched, so the
+ * whole range is exercised and not just the ends. */
+static const struct { const char *name; uint8_t r, g, b; uint8_t ink; } s_hues[] = {
+    { "red",   1u, 0u, 0u, UI_FAIL   },
+    { "green", 0u, 1u, 0u, UI_OK     },
+    { "blue",  0u, 0u, 1u, UI_ACCENT },
 };
 
-static void draw(const dlg_ctx_t *c, bool have_plain, bool plain_on,
-                 bool have_rgb, unsigned step, int plain_pin, int rgb_pin) {
+/* Gamma. An LED driven at half the numeric value looks far brighter than
+ * half, so a linear ramp appears to spend most of its time near full and
+ * the fade is not obviously a fade. Squaring is not the real curve but
+ * it is close enough to look right and costs one multiply. */
+static uint8_t fade_curve(unsigned level) {     /* level 0..255 */
+    return (uint8_t)((level * level) / 255u);
+}
+
+static uint32_t hue_grb(unsigned hue, unsigned level) {
+    const uint8_t v = fade_curve(level);
+    return ((uint32_t)(s_hues[hue].g * v) << 16) |
+           ((uint32_t)(s_hues[hue].r * v) << 8)  |
+            (uint32_t)(s_hues[hue].b * v);
+}
+
+/* Which half of the sequence is running. */
+typedef enum { PH_BLINK, PH_FADE } phase_t;
+
+static void draw(const dlg_ctx_t *c, phase_t phase, bool have_plain,
+                 bool plain_on, bool have_rgb, unsigned hue, unsigned level,
+                 int plain_pin, int rgb_pin) {
     ui_surface_t *s = ui_video_surface();
     c->paint_background();
 
@@ -127,29 +164,37 @@ static void draw(const dlg_ctx_t *c, bool have_plain, bool plain_on,
     int  col = cx;
 
     if (have_plain) {
+        const bool lit = (phase == PH_BLINK) && plain_on;
         ui_bevel_in(s, col, cy + 16, SWATCH, SWATCH);
         ui_fill(s, col + 1, cy + 17, SWATCH - 2, SWATCH - 2,
-                plain_on ? UI_WARN : UI_GREY_1);
+                lit ? UI_WARN : UI_GREY_1);
 
         snprintf(line, sizeof(line), "LED on GP%d", plain_pin);
-        ui_text(s, col + SWATCH + 10, cy + 22, line, UI_BLACK);
+        ui_text(s, col + SWATCH + 10, cy + 22, line,
+                phase == PH_BLINK ? UI_BLACK : UI_GREY_4);
         ui_text(s, col + SWATCH + 10, cy + 36,
-                plain_on ? "driven high - should be lit"
-                         : "driven low - should be dark", UI_GREY_5);
+                phase != PH_BLINK ? "done"
+                                  : (lit ? "driven high - should be lit"
+                                         : "driven low - should be dark"),
+                UI_GREY_5);
         col += SWATCH + 190;
     }
 
     if (have_rgb) {
-        const uint32_t grb = s_steps[step].grb;
-        ui_bevel_in(s, col, cy + 16, SWATCH, SWATCH);
         /* The swatch shows what is being sent, not what is on the board.
-         * If they disagree, that is the finding. */
+         * If they disagree, that is the finding. It dims with the fade so
+         * the panel and the LED tell the same story. */
+        const bool active = (phase == PH_FADE);
+        ui_bevel_in(s, col, cy + 16, SWATCH, SWATCH);
         ui_fill(s, col + 1, cy + 17, SWATCH - 2, SWATCH - 2,
-                grb ? s_steps[step].ink : UI_GREY_1);
+                (active && level > 40u) ? s_hues[hue].ink : UI_GREY_1);
 
         snprintf(line, sizeof(line), "WS2812 on GP%d", rgb_pin);
-        ui_text(s, col + SWATCH + 10, cy + 22, line, UI_BLACK);
-        snprintf(line, sizeof(line), "sending %s", s_steps[step].name);
+        ui_text(s, col + SWATCH + 10, cy + 22, line,
+                active ? UI_BLACK : UI_GREY_4);
+        if (active) snprintf(line, sizeof(line), "%s, fading %u%%",
+                             s_hues[hue].name, (level * 100u) / 255u);
+        else        snprintf(line, sizeof(line), "waiting");
         ui_text(s, col + SWATCH + 10, cy + 36, line, UI_GREY_5);
     }
 
@@ -201,11 +246,17 @@ void dlg_led(const dlg_ctx_t *c) {
     while (ui_input_getkey() != UI_KEY_NONE) { }
     ui_cursor_overlay_reset();
 
+    /* Blink first, then fade. A board with only one of the two starts on
+     * whichever it has and the sequence is that much shorter. */
+    phase_t  phase    = have_plain ? PH_BLINK : PH_FADE;
     bool     plain_on = false;
-    unsigned step     = 0;
+    unsigned blinks   = 0;
+    unsigned hue      = 0;
+    unsigned level    = 0;
+    bool     rising   = true;
     bool     stop     = false;
+    bool     first    = true;
     absolute_time_t next = get_absolute_time();
-    bool     first = true;
 
     while (!stop) {
         ui_input_task();
@@ -223,28 +274,50 @@ void dlg_led(const dlg_ctx_t *c) {
             pt->y >= s_stop_y && pt->y < s_stop_y + s_stop_h)
             stop = true;
 
-        /* Slow enough to read, fast enough not to wait around. Both LEDs
-         * step together so the panel and the board stay in agreement. */
         const bool due = absolute_time_diff_us(get_absolute_time(), next) <= 0;
         if (due || first) {
-            next = make_timeout_time_ms(700);
-            if (!first) {
-                plain_on = !plain_on;
-                step = (step + 1u) % (unsigned)count_of(s_steps);
-            }
             first = false;
 
-            if (have_plain) gpio_put((uint)p->led_plain, plain_on);
-            if (have_rgb)   ws2812_send((uint)p->led_ws2812,
-                                        s_steps[step].grb, hz);
+            if (phase == PH_BLINK) {
+                plain_on = !plain_on;
+                gpio_put((uint)p->led_plain, plain_on);
+                next = make_timeout_time_ms(400);
 
-            draw(c, have_plain, plain_on, have_rgb, step,
+                /* Six transitions is three flashes: long enough to be
+                 * sure it is blinking and not just on. */
+                if (++blinks >= 6u) {
+                    gpio_put((uint)p->led_plain, 0);
+                    if (have_rgb) { phase = PH_FADE; }
+                    else          { blinks = 0; }      /* nothing else to do */
+                }
+            } else {
+                ws2812_send((uint)p->led_ws2812, hue_grb(hue, level), hz);
+
+                /* 16 a step at 20 ms is a touch over a second and a half
+                 * each way, which reads as a fade rather than a ramp. */
+                if (rising) {
+                    if (level >= 255u - 16u) { level = 255u; rising = false; }
+                    else level += 16u;
+                } else {
+                    if (level <= 16u) {
+                        level  = 0u;
+                        rising = true;
+                        hue    = (hue + 1u) % (unsigned)count_of(s_hues);
+                        /* Back to the top of the sequence once the three
+                         * primaries have been round. */
+                        if (hue == 0u && have_plain) { phase = PH_BLINK; blinks = 0; }
+                    } else level -= 16u;
+                }
+                next = make_timeout_time_ms(20);
+            }
+
+            draw(c, phase, have_plain, plain_on, have_rgb, hue, level,
                  p->led_plain, p->led_ws2812);
         } else if (moved) {
             if (pt->present) ui_cursor_overlay_move(pt->x, pt->y);
         }
 
-        sleep_ms(8);
+        sleep_ms(4);
     }
 
     /* Left dark rather than however the cycle happened to end. A board

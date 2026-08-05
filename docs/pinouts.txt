@@ -473,58 +473,6 @@ MINIFRANK
   GPIO28  /RP2350A/GPIO28                    -> 
   GPIO29  /RP2350A/GPIO29                    -> 
 ==============================================================================
-NYX
-
---- U3 RP2350B  (/RP2350B/)
-  GPIO0   /GPIO0                             -> J3[~].pin1
-  GPIO1   /GPIO1                             -> J3[~].pin2
-  GPIO2   /GPIO2                             -> J3[~].pin4
-  GPIO3   /GPIO3                             -> J3[~].pin5
-  GPIO4   /GPIO4                             -> J3[~].pin6
-  GPIO5   /GPIO5                             -> J3[~].pin7
-  GPIO6   /GPIO6                             -> J3[~].pin9
-  GPIO7   /GPIO7                             -> J3[~].pin10
-  GPIO8   /GPIO8                             -> J3[~].pin11
-  GPIO9   /GPIO9                             -> J3[~].pin12
-  GPIO10  /GPIO10                            -> J3[~].pin14
-  GPIO11  /GPIO11                            -> J3[~].pin15
-  GPIO12  /GPIO12                            -> J3[~].pin16
-  GPIO13  /GPIO13                            -> J3[~].pin17
-  GPIO14  /GPIO14                            -> J3[~].pin19
-  GPIO15  /GPIO15                            -> J3[~].pin20
-  GPIO16  /GPIO16                            -> J1[~].pin21
-  GPIO17  /GPIO17                            -> J1[~].pin22
-  GPIO18  /GPIO18                            -> J1[~].pin24
-  GPIO19  /GPIO19                            -> J1[~].pin25
-  GPIO20  /GPIO20                            -> J1[~].pin26
-  GPIO21  /GPIO21                            -> J1[~].pin27
-  GPIO22  /GPIO22                            -> J1[~].pin29
-  GPIO23  /RP2350B/GPIO23                    -> 
-  GPIO24  /RP2350B/GPIO24                    -> 
-  GPIO25  Net-(U3-GPIO25)                    -> R4[1K].pin2
-  GPIO26  /GPIO26                            -> J1[~].pin31
-  GPIO27  /GPIO27                            -> J1[~].pin32
-  GPIO28  /GPIO28                            -> J1[~].pin34
-  GPIO29  /RP2350B/GPIO29                    -> 
-  GPIO30  /RP2350B/GPIO30                    -> 
-  GPIO31  /RP2350B/GPIO31                    -> 
-  GPIO32  /RP2350B/GPIO32                    -> 
-  GPIO33  /RP2350B/GPIO33                    -> 
-  GPIO34  /RP2350B/GPIO34                    -> 
-  GPIO35  /RP2350B/GPIO35                    -> 
-  GPIO36  /RP2350B/GPIO36                    -> 
-  GPIO37  /RP2350B/GPIO37                    -> 
-  GPIO38  /RP2350B/GPIO38                    -> 
-  GPIO39  /RP2350B/GPIO39                    -> 
-  GPIO40  /RP2350B/GPIO40                    -> 
-  GPIO41  /RP2350B/GPIO41                    -> 
-  GPIO42  /RP2350B/GPIO42                    -> 
-  GPIO43  /RP2350B/GPIO43                    -> 
-  GPIO44  /RP2350B/GPIO44                    -> 
-  GPIO45  /RP2350B/GPIO45                    -> 
-  GPIO46  /RP2350B/GPIO46                    -> 
-  GPIO47  /RP2350B/GPIO47                    -> R2[10K].pin1, U1[ESP-PSRAM64].~{CE}_1
-==============================================================================
 OLDSKOOLFRANK
 
 --- U1 Pimoroni PGA2350  (/PGA2350/)

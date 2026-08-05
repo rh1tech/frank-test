@@ -59,7 +59,9 @@ bool settings_load(frank_settings_t *out) {
     memcpy(&stored, SETTINGS_ADDR, sizeof(stored));
 
     if (stored.magic != FRANKID_MAGIC)     return false;
-    if (stored.version > FRANKID_VERSION)  return false;   /* written by a newer build */
+    /* Any version but ours, in either direction. Newer means a build we
+     * cannot read; older means ids that have since been renumbered. */
+    if (stored.version != FRANKID_VERSION)  return false;
     if (stored.crc32 != record_crc(&stored)) return false;
     if (stored.board >= FRANK_BOARD_COUNT)   return false;
 

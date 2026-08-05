@@ -10,7 +10,7 @@
  * ui_menu.h — the menu bar and its pull-downs.
  *
  * Every command in the firmware lives in a menu, and every menu item
- * carries a keyboard equivalent. That is not decoration: `nyx` has no
+ * carries a keyboard equivalent. That is not decoration: `zerofrank` has no
  * USB host and no PS/2 connector, so on some boards the only pointing
  * device is the arrow keys, and a menu that can only be opened by
  * clicking would be unusable exactly where the hardware is thinnest.
@@ -45,7 +45,7 @@ typedef struct {
     int                   count;
     bool                  is_mark;   /* draws the icon instead of a title */
 
-    /* Alt+this opens the menu. Every menu needs one: on `nyx` and the
+    /* Alt+this opens the menu. Every menu needs one: on `zerofrank` and the
      * core2 halves there is no pointing device at all, so a menu bar
      * that can only be opened by clicking is decoration. */
     char                  alt_key;
