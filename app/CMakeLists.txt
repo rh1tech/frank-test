@@ -41,11 +41,20 @@ add_executable(frank-test
     main.c
     dlg_audio.c
     dlg_nespad.c
+    report.c
     dlg_burnin.c
     dlg_led.c
     dlg_ps2.c
     dlg_tape.c
     ${FW_ROOT}/core/registry.c
+
+    # A filesystem, for the report only. The tests deliberately do not
+    # use one - see tests_sd.c - and this is invoked from a menu rather
+    # than by every run.
+    ${FW_ROOT}/drivers/fatfs/ff.c
+    ${FW_ROOT}/drivers/fatfs/ffsystem.c
+    ${FW_ROOT}/drivers/fatfs/diskio.c
+    ${FW_ROOT}/drivers/sdblock/sdblock.c
     ${FW_ROOT}/tests/tests_memory.c
     ${FW_ROOT}/tests/tests_board.c
     ${FW_ROOT}/tests/tests_psram_spi.c
@@ -101,7 +110,9 @@ target_include_directories(frank-test PRIVATE
     ${FW_ROOT}/tests
     ${FW_ROOT}/drivers/nespad
     ${FW_ROOT}/drivers/ps2
-    ${FW_ROOT}/drivers/tv)
+    ${FW_ROOT}/drivers/tv
+    ${FW_ROOT}/drivers/fatfs
+    ${FW_ROOT}/drivers/sdblock)
 
 # Pairs with set_sys_clock_khz(252000) in main(): clk_hstx = clk_sys/2 =
 # 126 MHz, which is what 640x480@60 TMDS needs. ui_video_hstx.c also

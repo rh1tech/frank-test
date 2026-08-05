@@ -1,9 +1,3 @@
-/*
- * FatFs, by ChaN. Vendored unchanged; see ff.h for the upstream
- * licence, which is BSD-style and not GPL.
- *   http://elm-chan.org/fsw/ff/
- */
-
 /*------------------------------------------------------------------------*/
 /* A Sample Code of User Provided OS Dependent Functions for FatFs        */
 /*------------------------------------------------------------------------*/

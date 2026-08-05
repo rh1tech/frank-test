@@ -25,6 +25,7 @@
 
 #include "detect.h"
 #include "dlgs.h"
+#include "report.h"
 #include "frank_audio.h"
 #include "mem_test.h"
 #include "registry.h"
@@ -242,6 +243,12 @@ static void gate_menus(void) {
                        ((g_detect.board->caps & CAP_LED_WS2812) &&
                         g_detect.board->pins.led_ws2812 != PIN_NC));
     ui_desktop_set_cmd_enabled(CMD_LED, leds);
+
+    /* A report needs somewhere to put it. */
+    const bool sd = g_detect.board &&
+                    (g_detect.board->caps & CAP_SD) &&
+                    g_detect.board->pins.sd_cs != PIN_NC;
+    ui_desktop_set_cmd_enabled(CMD_REPORT, sd);
 
     /* The tape input needs both the comparator and a pin to read it on.
      * A DIP-gated board still qualifies: the switch is the operator's to
@@ -563,6 +570,41 @@ static void do_command(int cmd) {
          * start-up and there is no safe way to hand them back to a UART
          * underneath a running PS/2 state machine, so this takes effect
          * on the next boot and the dialog says so. */
+        case CMD_REPORT: {
+            char name[32];
+            const report_result_t rr =
+                report_write(&g_detect, &g_results, name, sizeof(name));
+
+            switch (rr) {
+                case REPORT_OK:
+                    snprintf(g_dlg[0], sizeof(g_dlg[0]), "Written to %.12s", name);
+                    snprintf(g_dlg[1], sizeof(g_dlg[1]), "on the SD card.");
+                    snprintf(g_dlg[2], sizeof(g_dlg[2]), "Runs are appended, so a");
+                    snprintf(g_dlg[3], sizeof(g_dlg[3]), "board tested twice shows both.");
+                    break;
+                case REPORT_NO_BOARD:
+                    snprintf(g_dlg[0], sizeof(g_dlg[0]), "No board identified.");
+                    snprintf(g_dlg[1], sizeof(g_dlg[1]), "Board > Set Board first.");
+                    break;
+                case REPORT_NO_CARD:
+                    snprintf(g_dlg[0], sizeof(g_dlg[0]), "No card, or no SD socket");
+                    snprintf(g_dlg[1], sizeof(g_dlg[1]), "on this board.");
+                    break;
+                case REPORT_NO_FS:
+                    snprintf(g_dlg[0], sizeof(g_dlg[0]), "The card has no filesystem");
+                    snprintf(g_dlg[1], sizeof(g_dlg[1]), "this can write to.");
+                    snprintf(g_dlg[2], sizeof(g_dlg[2]), "FAT16 or FAT32; exFAT is");
+                    snprintf(g_dlg[3], sizeof(g_dlg[3]), "not supported.");
+                    break;
+                default:
+                    snprintf(g_dlg[0], sizeof(g_dlg[0]), "The card would not take");
+                    snprintf(g_dlg[1], sizeof(g_dlg[1]), "the file.");
+                    break;
+            }
+            show_dialog("Save Report", rr == REPORT_OK ? 4 : 4);
+            break;
+        }
+
         case CMD_CONSOLE: {
             const bool keep = !g_console_kept;
             if (settings_set_console(keep)) {
