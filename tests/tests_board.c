@@ -168,7 +168,7 @@ static ui_test_state_t t_rtc(const detect_result_t *d, char *detail,
      * a failure. Someone reading the row still needs to know the stored
      * time is meaningless. */
     if (stat & DS3231_STAT_OSF) {
-        snprintf(detail, len, "ticking, but OSF set (battery? time lost)");
+        snprintf(detail, len, "ticking, OSF set (battery?)");
         return TEST_PASS;
     }
 

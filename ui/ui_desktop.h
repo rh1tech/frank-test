@@ -153,4 +153,10 @@ void ui_desktop_set_cmd_checked(int cmd, bool checked);
 int ui_desktop_hit_row(const ui_desktop_t *d, int x, int y);
 int ui_desktop_rows_shown(void);
 
+/* Resolve a pointer position against the scroll bar. Returns the new
+ * first visible row, or -1 when the pointer is not on the bar or the
+ * bar is not being drawn. */
+int ui_desktop_scroll_hit(const ui_desktop_t *d, int x, int y,
+                          bool pressed, bool held);
+
 #endif /* UI_DESKTOP_H */

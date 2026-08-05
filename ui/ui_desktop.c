@@ -175,7 +175,9 @@ static void draw_state(ui_surface_t *s, int x, int y, const ui_test_row_t *r) {
  * six above, six below, two between. Anything less and the second line
  * sits tight against the row below it, which reads as a different row. */
 #define ROW_H_WRAP 30
-#define BAR_W      13
+/* ui_scrollbar() draws fifteen wide. Reserving thirteen let it overhang
+ * the content area and lose its right-hand edge to the clip. */
+#define BAR_W      15
 #define LIST_X     14
 #define LIST_PAD   12                      /* gap under the menu bar */
 #define LIST_Y     (UI_MENUBAR_H + LIST_PAD)
@@ -209,6 +211,11 @@ static struct {
     int y[40];
     int h[40];
     int count;
+
+    /* The scroll bar, so clicks on it can be resolved against what was
+     * drawn rather than against a second guess at where it is. */
+    int  bar_x, bar_y, bar_h;
+    bool bar_shown;
 } s_geom;
 
 /* Where the detail column ends and how wide it may be. Kept beside the
@@ -235,6 +242,43 @@ int ui_desktop_hit_row(const ui_desktop_t *d, int x, int y) {
 
 int ui_desktop_rows_shown(void) {
     return s_geom.count ? s_geom.count : 1;
+}
+
+/* A click, or a held button, on the scroll bar.
+ *
+ * The arrows step a row, the track pages, and the thumb is dragged. The
+ * arrows only act on the press so a held button does not run away with
+ * the list, while the thumb tracks continuously, which is what makes it
+ * feel like a thumb rather than a jump target. */
+int ui_desktop_scroll_hit(const ui_desktop_t *d, int x, int y,
+                          bool pressed, bool held) {
+    if (!s_geom.bar_shown) return -1;
+    if (x < s_geom.bar_x || x >= s_geom.bar_x + BAR_W) return -1;
+    if (y < s_geom.bar_y || y >= s_geom.bar_y + s_geom.bar_h) return -1;
+
+    const int shown = ui_desktop_rows_shown();
+    const int max   = (d->row_count > shown) ? d->row_count - shown : 0;
+    int first = d->first_visible;
+
+    const int arrow_top = s_geom.bar_y + BAR_W;
+    const int arrow_bot = s_geom.bar_y + s_geom.bar_h - BAR_W;
+
+    if (y < arrow_top)  { if (pressed) first -= 1; }
+    else if (y >= arrow_bot) { if (pressed) first += 1; }
+    else if (held || pressed) {
+        /* Proportional, from the middle of the thumb, so the row under
+         * the cursor is the one that stays there while dragging. */
+        const int track = arrow_bot - arrow_top;
+        int pos = y - arrow_top - 6;
+        if (track > 12 && max > 0) first = (pos * max) / (track - 12);
+        else                       first = 0;
+    } else {
+        return -1;
+    }
+
+    if (first > max) first = max;
+    if (first < 0)   first = 0;
+    return first;
 }
 
 static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
@@ -269,7 +313,12 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
         const ui_test_row_t *r = &d->rows[idx];
 
         const int row_h = row_height(r, list_w);
-        if (y + row_h > cy + ch) break;
+
+        /* Started, not finished, is fine. A row that only partly fits is
+         * drawn and clipped, which fills the tail of the window and
+         * shows there is more below; stopping at the last whole row left
+         * a band of empty grey that looked like the end of the list. */
+        if (y >= cy + ch) break;
 
         /* Remembered so hit-testing and scrolling use the geometry that
          * was actually drawn rather than a second copy of the sums. */
@@ -350,8 +399,13 @@ static void draw_results_window(ui_surface_t *s, const ui_desktop_t *d) {
 
     /* Drawn whenever the whole list does not fit, which is now measured
      * from what was laid out rather than assumed from a fixed count. */
-    if (d->first_visible > 0 || s_geom.count < d->row_count)
-        ui_scrollbar(s, cx + cw - BAR_W, cy, ch,
+    s_geom.bar_x     = cx + cw - BAR_W;
+    s_geom.bar_y     = cy;
+    s_geom.bar_h     = ch;
+    s_geom.bar_shown = (d->first_visible > 0) || (s_geom.count < d->row_count);
+
+    if (s_geom.bar_shown)
+        ui_scrollbar(s, s_geom.bar_x, s_geom.bar_y, s_geom.bar_h,
                      d->row_count, s_geom.count, d->first_visible);
 
     reclip(s);

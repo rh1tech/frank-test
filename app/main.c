@@ -1038,10 +1038,30 @@ int main(void) {
                         g_menubar.open = -1; g_menubar.highlight = -1;
                     }
                 } else {
-                    int row = hit_row(pt->x, pt->y);
-                    if (row >= 0) g_desk.selected = row;
+                    /* The scroll bar first: a click that lands on it is
+                     * not a click on the row behind it. */
+                    const int f = ui_desktop_scroll_hit(&g_desk, pt->x, pt->y,
+                                                        true, false);
+                    if (f >= 0) {
+                        g_desk.first_visible = f;
+                    } else {
+                        int row = hit_row(pt->x, pt->y);
+                        if (row >= 0) g_desk.selected = row;
+                    }
                 }
                 g_dirty = true;
+            }
+
+            /* Dragging the thumb. Only while the button is down and only
+             * on the bar, so a drag that started on a row cannot end up
+             * scrolling the list out from under it. */
+            if (pt->button && !pt->pressed) {
+                const int f = ui_desktop_scroll_hit(&g_desk, pt->x, pt->y,
+                                                    false, true);
+                if (f >= 0 && f != g_desk.first_visible) {
+                    g_desk.first_visible = f;
+                    g_dirty = true;
+                }
             }
 
             if (pt->wheel) { scroll_by(-pt->wheel); g_dirty = true; }
@@ -1095,8 +1115,12 @@ int main(void) {
                 switch (k) {
                     case UI_KEY_UP:   move_selection(-1); break;
                     case UI_KEY_DOWN: move_selection(+1); break;
-                    case UI_KEY_PGUP: move_selection(-10); break;
-                    case UI_KEY_PGDN: move_selection(+10); break;
+                    /* A page is what is on screen. Ten was a guess that
+                     * happened to be close while every row was twenty
+                     * pixels tall, and stopped being close when they
+                     * were not. */
+                    case UI_KEY_PGUP: move_selection(-ui_desktop_rows_shown()); break;
+                    case UI_KEY_PGDN: move_selection(+ui_desktop_rows_shown()); break;
                     case UI_KEY_HOME: g_desk.selected = 0; scroll_to_selection(); break;
                     case UI_KEY_END:  g_desk.selected = (int)g_results.count - 1;
                                       scroll_to_selection(); break;

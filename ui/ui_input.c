@@ -295,11 +295,69 @@ static bool was_down(uint8_t kc) {
     return false;
 }
 
+/* Typematic repeat.
+ *
+ * USB HID reports which keys are down, not when they were pressed, so a
+ * held key looked identical to a key nobody had touched since and
+ * produced exactly one keystroke. That is fine for a menu and useless
+ * for scrolling a list, which is what arrows and PgDn are for.
+ *
+ * A PS/2 keyboard repeats on its own and needs none of this - the
+ * keyboard's own typematic does it, and adding a second layer would make
+ * held keys repeat twice as fast on half the fleet.
+ *
+ * The delay before the first repeat is deliberately long enough that a
+ * deliberate single press never produces two. */
+#define REPEAT_DELAY_MS  420u
+#define REPEAT_RATE_MS    55u
+
+static uint8_t         s_rep_kc;       /* the HID code being repeated */
+static int             s_rep_key;      /* what it decodes to          */
+static absolute_time_t s_rep_next;
+
+/* Only keys worth repeating. A held Enter or Escape that fired forty
+ * times a second would be a menu opening and closing until let go. */
+static bool repeatable(int key) {
+    switch (key) {
+        case UI_KEY_UP: case UI_KEY_DOWN:
+        case UI_KEY_LEFT: case UI_KEY_RIGHT:
+        case UI_KEY_PGUP: case UI_KEY_PGDN:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static int hid_getkey(void) {
     usbhid_keyboard_state_t st;
     usbhid_get_keyboard_state(&st);
 
     int out = UI_KEY_NONE;
+
+    /* A key still held from last time repeats once its timer comes up. */
+    if (s_rep_kc) {
+        bool still = false;
+        for (int i = 0; i < 6; i++) if (st.keycode[i] == s_rep_kc) still = true;
+
+        if (!still) {
+            s_rep_kc  = 0;
+            s_rep_key = UI_KEY_NONE;
+        } else if (absolute_time_diff_us(get_absolute_time(), s_rep_next) <= 0) {
+            s_rep_next = make_timeout_time_ms(REPEAT_RATE_MS);
+            /* Arm the repeat on a fresh press of a key that wants one. */
+    if (out != UI_KEY_NONE && repeatable(out)) {
+        for (int i = 0; i < 6; i++) {
+            const uint8_t kc = st.keycode[i];
+            if (kc && !was_down(kc)) { s_rep_kc = kc; break; }
+        }
+        s_rep_key  = out;
+        s_rep_next = make_timeout_time_ms(REPEAT_DELAY_MS);
+    }
+
+    memcpy(s_prev_keys, st.keycode, sizeof(s_prev_keys));
+            return s_rep_key;
+        }
+    }
 
     for (int i = 0; i < 6 && out == UI_KEY_NONE; i++) {
         const uint8_t kc = st.keycode[i];
