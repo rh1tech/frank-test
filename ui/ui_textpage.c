@@ -219,9 +219,22 @@ void __not_in_flash_func(ui_textpage_draw)(void) {
         snprintf(line, sizeof(line), "%-15.15s", r->name);
         txt_puts(TXT_M_X, row, line, UI_WHITE, UI_BLACK);
         txt_puts(TXT_M_X + 16, row, tag, col, UI_BLACK);
+        /* As much of the measurement as the line actually has room for,
+         * measured rather than assumed. This was a fixed 19 characters
+         * against a page 30 wide here, so results were cut mid-word -
+         * "512 B written and r" - with eleven columns of black to the
+         * right of them. Every detail on a full run fits the real
+         * width; the marker below is for the few that do not. */
         if (r->detail) {
-            snprintf(line, sizeof(line), "%.19s", r->detail);
-            txt_puts(TXT_M_X + 21, row, line, UI_GREY_2, UI_BLACK);
+            const int col_x = TXT_M_X + 21;
+            const int room  = s_cols - TXT_M_X - col_x;
+            if (room > 1) {
+                snprintf(line, sizeof(line), "%.*s", room, r->detail);
+                /* A cut is worth seeing. Silent truncation reads as a
+                 * complete sentence that happens to end oddly. */
+                if ((int)strlen(r->detail) > room) line[room - 1] = '>';
+                txt_puts(col_x, row, line, UI_GREY_2, UI_BLACK);
+            }
         }
     }
 

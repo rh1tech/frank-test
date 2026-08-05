@@ -96,10 +96,26 @@ static const pinsig_entry_t sig_core2_slave[] = {
 /* --- RP2350B class ------------------------------------------------- */
 
 static const pinsig_entry_t sig_z0pa[] = {
-    { 47, PINSIG_HIGH },                       /* PSRAM CE, 10K          */
-    { 30, PINSIG_FLOAT }, { 43, PINSIG_FLOAT },
-    { 14, PINSIG_FLOAT }, { 2, PINSIG_FLOAT },
-    { 12, PINSIG_FLOAT },                      /* HSTX pins go nowhere   */
+    /* Measured on the board rather than inferred from what each pin is
+     * for. The first attempt was written from murmnes' pin assignments,
+     * which say what a pin does and nothing about how it idles - it
+     * scored below core2, the board came up unidentified, and video
+     * opened on HSTX pins that go nowhere here.
+     *
+     * What actually distinguishes it: everything from GP28 up idles
+     * high, and everything below GP28 floats. A core2 master matches
+     * five of its own six entries on this board and disagrees only at
+     * GP28, which is why the two tied. */
+    { 47, PINSIG_HIGH },                       /* PSRAM CE               */
+    { 43, PINSIG_HIGH },                       /* SD CS                  */
+    { 28, PINSIG_HIGH },                       /* the one core2 calls    */
+                                               /* float - the tiebreak   */
+    { 30, PINSIG_HIGH }, { 31, PINSIG_HIGH },  /* SD on SPI1             */
+    { 32, PINSIG_HIGH }, { 35, PINSIG_HIGH },  /* the HDMI block, which  */
+    { 39, PINSIG_HIGH },                       /* is where core2 floats  */
+    { 12, PINSIG_FLOAT },                      /* and where core2's own  */
+                                               /* video sits             */
+    { 46, PINSIG_FLOAT },
 };
 
 static const pinsig_entry_t sig_frank_pga[] = {
@@ -513,7 +529,7 @@ const frank_board_desc_t frank_board_table[] = {
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
     .caps = CAP_VIDEO_HDMI
           | CAP_PSRAM_QMI | CAP_SD | CAP_PS2 | CAP_GAMEPAD_NES
-          | CAP_AUDIO_I2S | CAP_AUDIO_CODEC_I2C | CAP_I2C
+          | CAP_AUDIO_I2S | CAP_I2C
           | CAP_USB_DEVICE | CAP_USB_HOST | CAP_LED_PLAIN,
     .pins = { PINS_NONE, PINS_UART01,
               /* SD is on SPI1: pins above GP29 have no SPI0 mapping. */
@@ -522,7 +538,13 @@ const frank_board_desc_t frank_board_table[] = {
               .pad_clk = 4, .pad_latch = 5, .pad_d1 = 7, .pad_d2 = 8,
               /* The onboard I2S pair, not the PCM5122 hat's. */
               .i2s_data = 10, .i2s_clk_base = 11, .i2s_mclk = NC,
-              /* I2C1 on GP2/GP3 configures the PCM5122 when fitted. */
+              /* I2C1 on GP2/GP3. It configures the PCM5122 on the audio
+               * hat, which is why this board must NOT declare
+               * CAP_AUDIO_CODEC_I2C: detection vetoes any board whose
+               * codec claim disagrees with what answered on the bus, so
+               * claiming a part that lives on an optional accessory
+               * ruled this board out of its own identification on every
+               * unit without the hat fitted - which is most of them. */
               .i2c_sda = 2, .i2c_scl = 3,
               /* The HDMI connector, which HSTX cannot reach - the PIO
                * backend takes this board on the strength of this pin
@@ -530,7 +552,12 @@ const frank_board_desc_t frank_board_table[] = {
               .video_base = 32,
               .psram_cs = 47, .led_plain = 25 },
     SIG(sig_z0pa),
-    .flash_bytes = 4u * 1024u * 1024u,
+    /* Zero, like the PSRAM below, because this board ships in more than
+     * one configuration - 4 MB and 16 MB parts are both about - and the
+     * Flash ID row reports a mismatch against whatever a descriptor
+     * declares. Detection measures the part; a fixed figure here would
+     * flag half the boards of this type as wrong. */
+    .flash_bytes = 0,
     /* Left at zero rather than guessed. Detection measures what is
      * actually on CS and fills this in; the PiZero ships in variants
      * with and without PSRAM, and a descriptor claiming eight megabytes

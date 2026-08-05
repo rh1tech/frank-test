@@ -49,17 +49,22 @@
 
 #include "board_desc.h"
 #include "detect.h"
-#include "usbhid.h"
 
 #include <stdio.h>
 
 /* The interface only builds the host when it is compiled in; without it
  * these rows would report an absence that is this firmware's doing
- * rather than the board's. */
+ * rather than the board's - and the driver's header is not on the
+ * include path either, which is what broke the console build. */
 #ifndef UI_INPUT_USB_HID
 #define UI_INPUT_USB_HID 1
 #endif
 
+#if UI_INPUT_USB_HID
+#include "usbhid.h"
+#endif
+
+#if UI_INPUT_USB_HID
 static const char *kind_name(uint8_t kind) {
     switch (kind) {
         case USBHID_KIND_KEYBOARD: return "keyboard";
@@ -67,6 +72,7 @@ static const char *kind_name(uint8_t kind) {
         default:                   return "HID";
     }
 }
+#endif
 
 static ui_test_state_t t_usb_host(const detect_result_t *d, char *detail,
                                   unsigned len, test_progress_fn p) {

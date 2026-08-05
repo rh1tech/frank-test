@@ -56,7 +56,14 @@
 #include "ui_palette.h"
 #include "ui_textpage.h"
 
-#include "hdmi.h"
+/* Path-qualified deliberately. drivers/ holds frank-msx's HDMI.h, and on
+ * a case-insensitive filesystem - which macOS is by default - a plain
+ * "hdmi.h" resolves to that one instead of the PIO driver's, since
+ * drivers/ comes before drivers/hdmi_pio on the include path. It
+ * declares enough of the same API to compile and quietly disagrees about
+ * the rest, so the bug only shows on the bench and never in CI, which
+ * builds on a case-sensitive filesystem and gets the right header. */
+#include "hdmi_pio/hdmi.h"
 
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
@@ -74,12 +81,20 @@ static int      s_video_base = 12;
 void ui_video_pio_set_base(int base) { s_video_base = base; }
 int  ui_video_pio_base(void)         { return s_video_base; }
 
-volatile uint32_t ui_pio_hdmi_frames;
-
 /* Core 1 runs the scanline interrupt, as it does on every other video
  * path here. */
 static void __not_in_flash_func(pio_core1_run)(void) {
     graphics_init_hdmi();
+
+    /* The palette goes in here rather than beside the rest of the setup,
+     * because graphics_init_hdmi() clears all 256 entries to black and
+     * reconverts them. Uploaded before the launch it is simply thrown
+     * away, and the result is a picture drawn correctly in black on
+     * black - a signal the display locks to, showing nothing, which
+     * reads exactly like a driver that does not work. */
+    for (unsigned i = 0; i < UI_PALETTE_LEN; i++)
+        graphics_set_palette_hdmi((uint8_t)i, ui_palette_rgb888[i]);
+
     while (true) tight_loop_contents();
 }
 
@@ -98,11 +113,7 @@ static bool pio_hdmi_init(void) {
     graphics_set_buffer(page);
     ui_textpage_target(page, PIO_W, PIO_H);
 
-    /* The interface's own palette, straight in: this driver is indexed
-     * and takes RGB888 per entry, which is what ui_palette holds. */
-    for (unsigned i = 0; i < UI_PALETTE_LEN; i++)
-        graphics_set_palette_hdmi((uint8_t)i, ui_palette_rgb888[i]);
-
+    /* The palette is loaded by core 1, after init - see pio_core1_run. */
     multicore_reset_core1();
     multicore_launch_core1(pio_core1_run);
     return true;
@@ -114,10 +125,12 @@ static void pio_hdmi_present(void) {
      * moving content between frames, a tear at pixel granularity is not
      * visible. Composite makes the same trade for the same reason. */
     if (ui_textpage_ready()) ui_textpage_draw();
-    ui_pio_hdmi_frames++;
 }
 
-static uint32_t pio_hdmi_frames(void) { return ui_pio_hdmi_frames; }
+/* From the driver's ISR, not from present(): the Video output row is
+ * asking whether frames reached the connector, and repaints are not
+ * evidence of that. */
+static uint32_t pio_hdmi_frames(void) { return hdmi_frame_count; }
 
 const ui_video_backend_t ui_video_backend_pio_hdmi = {
     .name     = "PIO HDMI 640x480",

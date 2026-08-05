@@ -124,7 +124,22 @@ target_include_directories(frank-test PRIVATE
 # Pairs with set_sys_clock_khz(252000) in main(): clk_hstx = clk_sys/2 =
 # 126 MHz, which is what 640x480@60 TMDS needs. ui_video_hstx.c also
 # forces it, so this is belt and braces rather than the only guard.
+# The PIO HDMI driver's pin layout, which it selects at compile time.
+#
+# PLATFORM_Z0 is murmnes' name for the Waveshare PiZero and picks data
+# lanes first, clock last, BGR order and non-inverted differential pairs.
+# Every other board it supports is the opposite on all four counts, and
+# the default is that other arrangement - so vendoring the driver without
+# this produced a correctly-opened backend driving the wrong pins in the
+# wrong order, which looks exactly like a dead output.
+#
+# It is safe to set for the whole image: the macros are read only by
+# drivers/hdmi_pio, and the PiZero is the only board here that uses it.
+# HDMI_BASE_PIN likewise defaults to 12, which is where HSTX lives and
+# not where this board's connector is.
 target_compile_definitions(frank-test PRIVATE
+    PLATFORM_Z0=1
+    HDMI_BASE_PIN=32
     MODE_HSTX_CLK_DIV=2
     FIRMWARE_VERSION="${FRANK_VERSION}"
 )
@@ -177,4 +192,16 @@ endif()
 if(FRANK_CONSOLE_WAIT)
     target_compile_definitions(frank-test PRIVATE
         PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=${FRANK_CONSOLE_WAIT})
+endif()
+
+# Bring-up: print every pin's idle classification, for writing a new
+# board's signature from measurement rather than from guesswork.
+if(FRANK_DUMP_PINSIG)
+    target_compile_definitions(frank-test PRIVATE FRANK_DUMP_PINSIG=1)
+endif()
+
+# Bring-up: force the video pin base, and with it which HDMI backend
+# takes the board, without waiting on detection.
+if(FRANK_VIDEO_BASE)
+    target_compile_definitions(frank-test PRIVATE FRANK_VIDEO_BASE=${FRANK_VIDEO_BASE})
 endif()

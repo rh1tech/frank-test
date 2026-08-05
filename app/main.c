@@ -30,6 +30,7 @@
 #include "psram_init.h"
 #include "frank_audio.h"
 #include "mem_test.h"
+#include "pinsig.h"
 #include "registry.h"
 
 void tests_link_init(const detect_result_t *d);
@@ -911,6 +912,42 @@ int main(void) {
         if (settings_load(&cs)) g_console_kept = (cs.console != 0u);
     }
 
+    /* Bring-up: read every safe pin and print how it looks.
+     *
+     * A board is identified by a handful of pins whose idle state is
+     * decided by what is soldered to them, and writing that signature
+     * for a board nobody has measured is guesswork - which is how Z0pa
+     * came to tie with core2 and get the wrong video backend. This dumps
+     * the real thing so the descriptor can be written from it.
+     *
+     *   cmake -B bld -DPICO_BOARD=frank_b -DFRANK_DUMP_PINSIG=1 */
+#if FRANK_DUMP_PINSIG
+    {
+        extern pinsig_t pinsig_classify(unsigned pin);
+        extern bool     pinsig_is_safe(unsigned pin);
+        extern const char *pinsig_name(pinsig_t s);
+
+        /* The connect-wait returns the moment the port is opened, which
+         * is before the host is reading it, so the first output of the
+         * boot goes into a buffer that is then overwritten - the dump
+         * came through cut in half and interleaved with what followed.
+         * A settle here is cheap and this is a bring-up build only. */
+        sleep_ms(1500);
+
+        printf("\n--- pin signature ---\n");
+        for (unsigned pin = 0; pin < 48u; pin++) {
+            if (!pinsig_is_safe(pin)) printf("  GP%-2u skipped\n", pin);
+            else printf("  GP%-2u %s\n", pin, pinsig_name(pinsig_classify(pin)));
+            /* Paced, because 48 lines back to back overrun the CDC
+             * buffer and the first forty arrive as a stub. */
+            stdio_flush();
+            sleep_ms(20);
+        }
+        printf("--- end ---\n");
+        stdio_flush();
+    }
+#endif
+
     stage("detect");
     detect_run(&g_detect);
     detect_report(&g_detect);
@@ -1016,7 +1053,20 @@ int main(void) {
      * connector is, and only the descriptor knows. */
     {
         extern void ui_video_pio_set_base(int base);
+#if defined(FRANK_VIDEO_BASE)
+        /* Bring-up: force the pin base, and so which HDMI backend takes
+         * the board, without waiting on detection to agree. A dark
+         * screen otherwise has two possible causes - the wrong backend
+         * chosen, or the right one not working - and this separates
+         * them in one flash.
+         *
+         *   cmake -B bld -DPICO_BOARD=frank_b -DFRANK_VIDEO_BASE=32 */
+        printf("[video] FRANK_VIDEO_BASE=%d: detection overridden\n",
+               FRANK_VIDEO_BASE);
+        ui_video_pio_set_base(FRANK_VIDEO_BASE);
+#else
         ui_video_pio_set_base(g_detect.board ? g_detect.board->pins.video_base : 12);
+#endif
     }
 
     stage("video open");

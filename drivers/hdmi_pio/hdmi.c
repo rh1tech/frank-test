@@ -23,6 +23,7 @@
 /* Globals expected by the driver */
 int graphics_buffer_width = 256;
 int graphics_buffer_height = 240;
+volatile uint32_t hdmi_frame_count;
 int graphics_buffer_shift_x = 0;
 int graphics_buffer_shift_y = 0;
 enum graphics_mode_t hdmi_graphics_mode = GRAPHICSMODE_DEFAULT;
@@ -374,6 +375,12 @@ static void __not_in_flash_func(dma_handler_HDMI)(void) {
         /* VBlank area */
         if (line == (VMARGIN_SCANLINES + CONTENT_SCANLINES + VMARGIN_SCANLINES + 1)) {
             apply_pending_palette();
+            /* One tick per frame actually scanned out, for the Video
+             * output row. Counting calls to present() instead would
+             * count the firmware asking for a repaint, which says
+             * nothing about whether anything reached the connector -
+             * and reads zero while a test run holds the main loop. */
+            hdmi_frame_count++;
         }
 
         if ((line >= 490) && (line < 492)) {

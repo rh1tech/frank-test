@@ -98,6 +98,9 @@ void graphics_set_bgcolor(const uint32_t color888);
 
 /* --- HDMI-specific API (always available, called internally or when !SELECT_VGA) --- */
 
+/* Frames actually scanned out, incremented in the scanline ISR. */
+extern volatile uint32_t hdmi_frame_count;
+
 void graphics_init_hdmi(void);
 void graphics_set_buffer(uint8_t *buffer);
 uint8_t* graphics_get_buffer(void);
