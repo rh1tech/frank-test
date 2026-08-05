@@ -18,6 +18,7 @@ actually has, and tests only that.
 - [Video](#video)
 - [The tests](#the-tests)
 - [Interactive checks](#interactive-checks)
+- [Saving a report](#saving-a-report)
 - [What it cannot test](#what-it-cannot-test)
 - [Building](#building)
 - [Releases](#releases)
@@ -117,6 +118,11 @@ pointing device at all, so that is not a nicety.
 | `A` | Run All |
 | `E` | Run Selected |
 | `?` | Key help on the console |
+
+Held arrows and PgUp/PgDn repeat. USB HID reports which keys are *down* rather
+than when they were pressed, so a held key used to produce exactly one keystroke —
+fine for a menu, useless for scrolling. Enter and Escape deliberately do not
+repeat.
 
 A mouse works if you have one. The pointer is drawn by patching the framebuffer
 in place rather than recomposing the screen, so it keeps up even while audio is
@@ -231,9 +237,33 @@ address line.
 |---|---|
 | Video detect | Which output the detector chose, and why |
 | Video output | Frames are being emitted, by counting them |
-| RTC | A DS3231 acknowledges at 0x68 |
+| I2C bus scan | Every address from 0x08 to 0x77, and that both lines idle high |
+| Tape switch | Whether the DIP actually connects the tape line to GP22 |
+| RTC | A DS3231 that is ticking, not merely acknowledging |
+| Clock accuracy | The system crystal against the RTC's, in ppm |
 | Unit serial | The DS2401 ROM, the only per-unit identity here that is not a guess |
 | GPIO short scan | Adjacent-pin solder bridges |
+| USB host | What has enumerated: vendor, product and kind |
+| USB hub | That a device reached the controller through it |
+| ESP-01 | A module answers AT, and names its firmware |
+
+The RTC row reads the seconds register twice a second apart, because a DS3231
+with a dead crystal or a flat cell acknowledges perfectly — the old row passed on
+exactly the clocks that cannot keep time. It reports the oscillator-stop flag and
+deliberately does not clear it: clearing is how you acknowledge the stored time is
+untrustworthy, and that is the operator's call.
+
+Clock accuracy exists because the system crystal has no reference to be wrong
+against — every timer and baud rate is derived from it. The DS3231 has one, and a
+good one. The row names both crystals rather than picking a culprit.
+
+The USB hub row needs nothing of its own: every device on Core 2U sits behind the
+hub, so anything that enumerated is proof it works.
+
+A short scan confirms a bridge in both directions now — drive high and watch it
+follow, then drive low and watch it follow. A floating pin holds charge from
+whatever last drove it and can read high once against a pull-down, which produced
+a short on the first run after reset that was gone by the second.
 
 The short scan skips pins that are tied together on purpose. The link buses run
 adjacent pins to the same places by design, GP9-11 are joined by the audio
@@ -246,16 +276,31 @@ every run would just teach you to ignore the result.
 |---|---|
 | SD card | CMD0/CMD8/ACMD41 succeed, and CID and CSD decode to manufacturer, product and capacity |
 | SD read | Sector 0 comes back carrying a boot signature |
+| SD speed | Read throughput, over the hardware SPI |
+| SD write | A sector written, verified, and put back |
 
 Two rows, because they fail for different reasons. Sixteen bytes of CID can
 succeed over a link that falls apart at 512. An unformatted card reports *could
 not run* rather than failing, since that is not a board fault.
+
+The probe is bit-banged deliberately — it moves about forty bytes and cannot leave
+a half-configured peripheral behind it — but *SD speed* hands the same four pins
+to the SPI block for the duration, because timing the bit-banged path would
+measure this firmware's inner loop and call it a card.
+
+*SD write* takes the last sector, writes a counting pattern, reads it back,
+restores the original and reads once more to confirm the restore took. It is the
+only row that writes anything, and the only direction the others never exercise.
+A failed restore is reported louder than the original fault, because the card
+then holds something nobody chose. The pattern counts rather than repeating, so a
+stuck bus cannot match it.
 
 ### Inter-processor link (Core 2 / Core 2U)
 
 | Test | What it proves |
 |---|---|
 | Processor link | Handshake, then bidirectional throughput. Typically around 96 MiB/s duplex |
+| Link soak | Thirty seconds of sweeps, counting errors against passes |
 | Slave reset | The master can reboot the slave over FS and watch it come back |
 
 Both need the slave image running. The link stack escalates recovery on its own:
@@ -279,10 +324,52 @@ PWM, TDA (I²S) and TurboSound. Each loops a short melody through left, right an
 centre, naming the channel while it plays. One steady tone cannot tell a working
 stereo path from a stuck LRCK. They all sound like success.
 
+*I hear it* and *Silent* record what you decide, and the answer goes into the
+saved report. Leaving with `Esc` records nothing, because closing a dialog is not
+a verdict and storing it as one would turn "did not check" into "does not work".
+
 On a board with an audio mux the dialog tells you which switch positions that
 source needs. The mux is a 4:1 selector rather than two enables, so setting both
 switches picks ground. That is silence, and it looks exactly like a dead
 amplifier.
+
+### PS/2 ports, `Tests` ▸ `PS/2 Ports`
+
+Press keys and move the mouse; the byte count climbs. The count is deliberately
+the raw one, taken before decoding, because a port carrying garbage is wired but
+wrong — clock and data crossed, usually — and looks identical to a dead one if you
+only watch decoded keys. The last raw code sits beside it: a port showing `0xAA`
+and nothing else has a keyboard that finished its self-test and a host that is not
+hearing keystrokes.
+
+Those connectors are a common cold-solder site, which is what this is for.
+
+The mouse panel names *why* it is off when it is — no pins on this board, or the
+console holding GP0/GP1 — because those send you to completely different places.
+It reads the PS/2 mouse directly rather than through the merged pointer, so a USB
+mouse moving the cursor cannot make a dead PS/2 port look alive.
+
+### LEDs, `Tests` ▸ `LEDs`
+
+The plain LED blinks three times, then a WS2812 fades up and down through red,
+green and blue. A board with only one of the two runs only that part.
+
+Fading rather than switching, because a fade is much harder to fake: a marginal
+data line usually still manages full brightness and falls apart in the middle of
+the range, where a bit error turns a dim red into a bright green.
+
+### Burn-in, `Tests` ▸ `Burn-in`
+
+The whole suite on repeat, counting failures per row and showing only the rows
+that have gone wrong — a clean burn-in is a blank panel, and anything on it is
+worth looking at. This is the only thing here that catches the class of fault a
+single cold pass never will: PSRAM that fails once warm, a link that degrades, a
+joint that conducts until something expands.
+
+*Could not run* is counted separately from failure. An empty SD socket is not an
+intermittent fault, and lumping the two together would bury a real one under forty
+of them. There is no cycle limit: you are the only party who knows how much
+evidence the board needs.
 
 ### NES gamepads, `Tests` ▸ `NES Gamepad(s)`
 
@@ -301,6 +388,31 @@ number to see any of that.
 
 ---
 
+## Saving a report
+
+`File` ▸ `Save Report to SD` writes the run to the card: board, silicon, chip ID,
+DS2401 serial, every row with its state and measurement, the summary, and
+anything the audio dialogs were told by ear.
+
+The file is named for the DS2401 serial where the board has one, since that part
+exists to give a board a permanent name, and falls back to the flash unique ID
+where it does not. Runs are appended rather than overwritten, so a unit tested
+twice shows both.
+
+The timestamp comes from the DS3231 where there is one and says so plainly where
+there is not. Four boards carry an RTC; a report that invented a date on the rest
+would be worse than one admitting it has none, because a plausible wrong date is
+the kind of thing that gets believed later.
+
+This is the one feature that brings in a filesystem. The tests deliberately do
+not use one — whether a card carries a filesystem this firmware recognises says
+nothing about whether the board works — so it is invoked from a menu rather than
+dragged in by every run. Long filenames and exFAT are compiled out to keep it
+small, which means **an exFAT card cannot be written to**; the dialog says so
+rather than reporting a vague failure. FAT16 and FAT32 are fine.
+
+---
+
 ## What it cannot test
 
 Worth being blunt about, because a rig that quietly claims coverage it does not
@@ -310,19 +422,35 @@ Anything past an audio pin. There is no loopback and no ADC. The firmware can
 prove SCLK and LRCK are clocking and nothing whatsoever about the DAC, the
 amplifier or the speaker.
 
-The AY chips. That 74HC595 chain is write-only.
+The AY chips. Verified against the schematic rather than assumed, and it is
+worse than write-only: the data bus carries both AYs and the shift register's
+outputs with no GPIO on it, the second register's serial output is not connected
+to anything, and both output-enables are tied to ground so the chain cannot be
+tri-stated to let an AY drive the bus. The audio route was checked too, and the
+divider into the tape input puts an AY's output well under the threshold. So
+TurboSound is reported by ear, from the Audio dialog, and the saved report says
+whose verdict it is.
+
+One track would change that: routing the last register's `QH'` to a spare GPIO
+would make everything up to the AY pins testable.
 
 Whether a display is plugged in. No FRANK board wires hot-plug detect, so an
 absent monitor and a broken output look identical. *Video output* counts emitted
 frames and claims nothing more.
 
 Switch positions. Every board has switches the firmware cannot read, and they are
-listed in *Manual Steps*.
+listed in *Manual Steps*. The one exception is the tape DIP, which does not
+present a position but does connect a 10K load to GP22 when closed — so *Tape
+switch* reports whether it is closed rather than what it is set to.
 
 Composite lock. The encoder can be shown to run. Whether a television syncs to it
 is something only a television can tell you.
 
-Fourteen of the thirty-one capability bits are tested today.
+Whether an LED lights. Firmware can drive a pin and cannot see light, which is
+why the LED check is a dialog with no verdict rather than a row.
+
+Twenty-one of the thirty-one capability bits are tested or interactively covered
+today.
 [docs/ROADMAP.md](docs/ROADMAP.md) goes through the rest: what a test could
 honestly prove, what it could not, and a sensible order to do them in.
 

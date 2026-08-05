@@ -1,7 +1,7 @@
 # What else can be tested
 
-Every capability bit in `core/frank_caps.h` is a claim about hardware. Fourteen
-of the thirty-one are tested today. This goes through the rest: what a test could
+Every capability bit in `core/frank_caps.h` is a claim about hardware. Twenty-one
+of the thirty-one are tested or interactively covered today. This goes through the rest: what a test could
 honestly prove, what it could not, and roughly what order to do them in.
 
 A few items are marked as not worth building. That is the same principle the
