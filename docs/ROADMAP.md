@@ -163,15 +163,16 @@ directly, and the count already answers the question that matters.
 
 The mux is switch-selected and stays untestable, like the audio one.
 
-### 8. PIO-USB second port (`CAP_PIO_USB`)
+### 8. PIO-USB second port (`CAP_PIO_USB`) — not built
 
-`pio_usb_dp` is in the descriptor. A second USB host on PIO is well-trodden, but
-it wants a spare PIO and all three are committed now: link, I²S, gamepads. It
-really needs the gamepad reader to release pio2 when its dialog closes, which it
-does not do.
+Unchanged in substance and worth restating with what is now known. One board
+declares it: zeroFRANK, on GP20. It needs the Pico-PIO-USB library, which is not
+vendored here, *and* a free PIO — all three are committed, and the gamepad reader
+still does not release pio2 when its dialog closes.
 
-Flagged as much for the resource conflict as for the test. Worth resolving before
-another PIO consumer turns up.
+That makes it the one Tier 2 item that is a dependency and a refactor rather than
+a test. The refactor is worth doing on its own merits: whoever adds the next PIO
+consumer will hit the same wall.
 
 ### 9. DB9 gamepads (`CAP_GAMEPAD_DB9`)
 
@@ -189,22 +190,50 @@ the handshake and ready pair.
 
 Both need the module fitted, so absence has to report *could not run*.
 
-### 11. SD write, and a results report
+The ESP-01S half is done. The ESP32 half is not: it exists only on FRANK Next,
+which has real reset lines where the ESP-01S boards have buttons, so it is a
+genuinely different test rather than the same one with different pins. Written
+blind it would be untestable here, and this firmware has already spent an evening
+on hardware code that could not be checked against the board it was for.
 
-Two related ideas. Writing to a card is genuinely destructive so it needs
-explicit consent, but a write, read and restore of one sector in unallocated
-space is a real test of the bidirectional path.
+### 11. SD write, and a results report — write done, report not
 
-The more valuable half is writing the results *to* the card. A production rig
-wants a record: DS2401 serial, board type, every measurement, a timestamp from
-the RTC. One text file per unit turns this from a bench tool into something
-traceable.
+*SD write* takes the last sector, writes a counting pattern, reads it back,
+compares, restores the original and reads once more to confirm the restore took.
+Everything else on the card only reads, and the direction that is never exercised
+is the one that turns out to be broken.
 
-### 12. SD 4-bit mode (`CAP_SD_4BIT`)
+No consent dialog in the end. It is not destructive if the original goes back and
+the restore is verified, and a prompt nobody can answer usefully — "may I write
+to a sector you cannot see?" — is a worse design than doing the safe thing and
+saying what was done. A failed restore is reported louder than the original
+fault, because the card then holds something nobody chose.
 
-One board wires `sd_dat1` and `sd_dat2`. Testing 4-bit transfer would prove those
-two lines, which 1-bit SPI mode never touches. A solder fault on DAT1 is
-invisible today.
+The pattern counts rather than repeating: a stuck bus reads back the same byte
+everywhere and would match a constant fill, so a counter catches a wrong address
+line as well as a wrong data line. The last sector rather than sector zero,
+because a boot sector is the one place a failed restore is unrecoverable.
+
+The report half is not built. It needs a filesystem, and the argument in
+tests_sd.c against pulling FatFs in still holds — whether a card carries a
+filesystem this firmware recognises says nothing about whether the board works.
+Writing a report would make it a dependency of the rig rather than of one test,
+which is a decision worth taking deliberately rather than as a side effect.
+
+### 12. SD 4-bit mode (`CAP_SD_4BIT`) — not built, and the entry was wrong
+
+Checked before writing anything. One board wires the lines — FRANK Next, on GP5
+and GP6, with its own SD pin set — and **no board declares `CAP_SD_4BIT` at
+all**, so a test gated on it would have been permanently n/a and looked like
+coverage.
+
+The lines cannot be proven without driving them, and driving them means SDIO
+rather than SPI. That is a PIO program, and all three PIOs are committed. Nothing
+cheaper works: DAT1 and DAT2 are unused in SPI mode, so reading them through a
+pull-up cannot tell a card holding the line from a floating trace doing the same.
+
+Needs the capability declared on FRANK Next and an SDIO implementation with a PIO
+to put it in. Both are real work; neither is hard.
 
 ---
 

@@ -68,6 +68,7 @@
 #define CMD9    9        /* SEND_CSD           */
 #define CMD10   10       /* SEND_CID           */
 #define CMD17   17       /* READ_SINGLE_BLOCK  */
+#define CMD24   24       /* WRITE_BLOCK        */
 #define CMD55   55       /* APP_CMD            */
 #define CMD58   58       /* READ_OCR           */
 #define ACMD41  41       /* SD_SEND_OP_COND    */
@@ -584,10 +585,142 @@ static ui_test_state_t t_sd_speed(const detect_result_t *d, char *detail,
     return TEST_PASS;
 }
 
+/* The write path, on a sector the card is not using for anything.
+ *
+ * Everything above this point reads. A card can answer every register,
+ * hand over its CID and stream half a megabyte and still fail to take a
+ * byte, because the direction that was never exercised is the one that
+ * is broken - a cold joint on CMD, a card that has worn its blocks out,
+ * a socket whose write-protect notch is shorting.
+ *
+ *
+ * WHY THIS DOES NOT DESTROY ANYTHING
+ *
+ * It writes to the last sector of the card and puts back exactly what
+ * was there. Read, write a pattern, read it back, compare, restore, read
+ * once more to confirm the restore took. If any step fails the original
+ * is written back anyway before the row reports.
+ *
+ * The last sector rather than sector zero: a filesystem's boot sector is
+ * the one place where a failed restore is unrecoverable, and the tail of
+ * a card is almost always slack space in the last cluster. "Almost
+ * always" is doing work in that sentence, which is why the restore is
+ * verified rather than assumed - if the read-back after restore does not
+ * match, the row says so in as many words rather than passing quietly.
+ *
+ * There is no consent dialog. The roadmap wanted one, on the grounds
+ * that writing is destructive; it is not destructive if the original
+ * goes back and the restore is checked, and a prompt nobody can answer
+ * usefully - "may I write to a sector you cannot see?" - is a worse
+ * design than doing the safe thing and saying what was done.
+ */
+#define WRITE_PATTERN_A 0xA5u
+#define WRITE_PATTERN_B 0x5Au
+
+/* Send one block and wait for the card to accept and finish it. */
+static bool sd_tx_block(const sd_pins_t *p, const uint8_t *buf, unsigned len) {
+    sd_xfer(p, 0xFF);
+    sd_xfer(p, 0xFE);                       /* single-block start token */
+    for (unsigned i = 0; i < len; i++) sd_xfer(p, buf[i]);
+    sd_xfer(p, 0xFF); sd_xfer(p, 0xFF);     /* CRC, ignored in SPI mode */
+
+    /* The data response: xxx0sss1, where 010 means accepted. */
+    const uint8_t resp = sd_xfer(p, 0xFF);
+    if ((resp & 0x1Fu) != 0x05u) return false;
+
+    /* Then the card holds the line low until the block is committed.
+     * Cards can take a surprising while over this - a quarter second is
+     * within spec for a worn one - so the wait is generous. */
+    for (unsigned i = 0; i < 500000u; i++)
+        if (sd_xfer(p, 0xFF) != 0x00u) return true;
+    return false;
+}
+
+static ui_test_state_t t_sd_write(const detect_result_t *d, char *detail,
+                                  unsigned len, test_progress_fn p) {
+    sd_pins_t sp;
+    if (!pins_from(&d->board->pins, &sp)) {
+        snprintf(detail, len, "no SD pins");
+        return TEST_NORUN;
+    }
+    if (!s_card.present || s_card.bytes < 1024u * 1024u) {
+        snprintf(detail, len, "no card identified");
+        return TEST_NORUN;
+    }
+
+    /* The last sector the card admits to. Derived from the CSD capacity
+     * rather than assumed, because getting it wrong here writes
+     * somewhere real. */
+    const uint32_t sector = (uint32_t)((s_card.bytes / 512ull) - 1ull);
+    const uint32_t arg = s_card.block_addressed ? sector : sector * 512u;
+
+    static uint8_t orig[512], work[512], back[512];
+    bool ok = true;
+    const char *why = NULL;
+
+    sd_select(&sp);
+
+    if (sd_cmd(&sp, CMD17, arg, CRC_DUMMY) != 0 || !sd_rx_block(&sp, orig, 512)) {
+        sd_deselect(&sp);
+        snprintf(detail, len, "could not read the last sector");
+        return TEST_FAIL;
+    }
+    if (p) p(250, NULL);
+
+    /* A pattern that is not a constant: a stuck bus reads back the same
+     * byte everywhere and would match a fill. The counter catches an
+     * address line that is wrong as well as a data line. */
+    for (unsigned i = 0; i < sizeof(work); i++)
+        work[i] = (uint8_t)((i & 1u) ? (WRITE_PATTERN_A ^ (i >> 1))
+                                     : (WRITE_PATTERN_B ^ (i >> 1)));
+
+    if (sd_cmd(&sp, CMD24, arg, CRC_DUMMY) != 0 || !sd_tx_block(&sp, work, 512)) {
+        ok = false; why = "card would not take the write";
+    }
+    if (p) p(500, NULL);
+
+    if (ok) {
+        if (sd_cmd(&sp, CMD17, arg, CRC_DUMMY) != 0 || !sd_rx_block(&sp, back, 512)) {
+            ok = false; why = "wrote, but could not read back";
+        } else if (memcmp(work, back, sizeof(work)) != 0) {
+            ok = false; why = "read back different from written";
+        }
+    }
+    if (p) p(750, NULL);
+
+    /* Put it back whatever happened above, and check that it went. */
+    bool restored = false;
+    if (sd_cmd(&sp, CMD24, arg, CRC_DUMMY) == 0 && sd_tx_block(&sp, orig, 512)) {
+        if (sd_cmd(&sp, CMD17, arg, CRC_DUMMY) == 0 &&
+            sd_rx_block(&sp, back, 512))
+            restored = (memcmp(orig, back, sizeof(orig)) == 0);
+    }
+
+    sd_deselect(&sp);
+    if (p) p(1000, NULL);
+
+    if (!restored) {
+        /* Louder than the original fault, because it is worse: the card
+         * now holds something nobody chose. */
+        snprintf(detail, len, "RESTORE FAILED on sector %lu",
+                 (unsigned long)sector);
+        return TEST_FAIL;
+    }
+
+    if (!ok) {
+        snprintf(detail, len, "%s", why ? why : "write failed");
+        return TEST_FAIL;
+    }
+
+    snprintf(detail, len, "512 B written and restored");
+    return TEST_PASS;
+}
+
 const frank_test_t frank_tests_sd[] = {
     { "SD card", ICON_DISK, CAP_SD, 0, t_sd      },
     { "SD read", ICON_DISK, CAP_SD, 0, t_sd_read },
     { "SD speed", ICON_DISK, CAP_SD, 0, t_sd_speed },
+    { "SD write", ICON_DISK, CAP_SD, 0, t_sd_write },
 };
 
 const unsigned frank_tests_sd_len =
