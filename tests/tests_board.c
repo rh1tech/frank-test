@@ -17,6 +17,8 @@
  */
 
 #include "registry.h"
+
+#include "i2c_bb.h"
 #include "video_detect.h"
 #include "ui_video.h"
 
@@ -96,14 +98,201 @@ static ui_test_state_t t_video_out(const detect_result_t *d, char *detail,
 /* Peripherals the detector already established                        */
 /* ------------------------------------------------------------------ */
 
+/* The DS3231, past the point of it answering.
+ *
+ * Acking at 0x68 was the whole of this test, and a part with a dead
+ * crystal or a flat backup cell acks perfectly — so the row passed on
+ * exactly the clocks that cannot keep time. Two further things are
+ * cheap and settle it.
+ *
+ * The oscillator-stop flag in the status register is set by the part
+ * itself whenever the oscillator has stopped since it was last cleared,
+ * which is what a flat battery looks like across a power cycle. It is
+ * reported rather than cleared: clearing it is how you acknowledge the
+ * time is not to be trusted, and that is the operator's decision, not a
+ * test rig's.
+ *
+ * Then the seconds register, twice, a second apart. A crystal that is
+ * present but not oscillating leaves it frozen. That costs a second of
+ * the run and is the only direct evidence that this part is keeping
+ * time rather than merely being on the bus. */
+#define DS3231_ADDR      0x68u
+#define DS3231_REG_SECS  0x00u
+#define DS3231_REG_STAT  0x0Fu
+#define DS3231_STAT_OSF  0x80u
+
 static ui_test_state_t t_rtc(const detect_result_t *d, char *detail,
                              unsigned len, test_progress_fn p) {
-    (void)p;
+    const frank_pins_t *pins = d->board ? &d->board->pins : NULL;
+
     if (!d->i2c_ds3231) {
         snprintf(detail, len, "no ack at 0x68");
         return TEST_FAIL;
     }
-    snprintf(detail, len, "DS3231 at 0x68");
+    if (!pins || pins->i2c_sda == PIN_NC || pins->i2c_scl == PIN_NC) {
+        snprintf(detail, len, "DS3231 at 0x68");
+        return TEST_PASS;
+    }
+
+    const unsigned sda = (unsigned)pins->i2c_sda, scl = (unsigned)pins->i2c_scl;
+    i2c_bb_init(sda, scl);
+
+    uint8_t stat = 0, s0 = 0, s1 = 0;
+    const bool got_stat = i2c_bb_read_regs(sda, scl, DS3231_ADDR,
+                                           DS3231_REG_STAT, &stat, 1);
+    const bool got_s0   = i2c_bb_read_regs(sda, scl, DS3231_ADDR,
+                                           DS3231_REG_SECS, &s0, 1);
+    if (p) p(300, "watching the oscillator");
+
+    /* A second and a bit: the register changes on the oscillator's edge,
+     * not ours, so sampling at exactly one second can miss. */
+    sleep_ms(1100);
+
+    const bool got_s1 = i2c_bb_read_regs(sda, scl, DS3231_ADDR,
+                                         DS3231_REG_SECS, &s1, 1);
+    i2c_bb_release(sda, scl);
+    if (p) p(1000, NULL);
+
+    if (!got_stat || !got_s0 || !got_s1) {
+        snprintf(detail, len, "acks at 0x68 but will not read");
+        return TEST_FAIL;
+    }
+
+    if (s0 == s1) {
+        snprintf(detail, len, "oscillator stopped (seconds stuck at %02X)", s0);
+        return TEST_FAIL;
+    }
+
+    /* Ticking. The stop flag is history rather than a present fault —
+     * the part is running now — so it is a warning in the detail and not
+     * a failure. Someone reading the row still needs to know the stored
+     * time is meaningless. */
+    if (stat & DS3231_STAT_OSF) {
+        snprintf(detail, len, "ticking, but OSF set (battery? time lost)");
+        return TEST_PASS;
+    }
+
+    snprintf(detail, len, "DS3231 ticking, %02X->%02X", s0, s1);
+    return TEST_PASS;
+}
+
+/* Whether the tape DIP is actually closed.
+ *
+ * The roadmap wanted the DIP switch positions read back. On these boards
+ * that is not what the switch is: `dip` and `tape_in` are the same pin,
+ * GP22, and the switch does not present a position — it connects the
+ * tape line to the pin or leaves it floating. There is no bit to read.
+ *
+ * What can be read is the consequence, and it happens to be exactly the
+ * useful half. Closed, GP22 sits on the tape network: 10K to ground and
+ * a microfarad with it. Against the chip's own pull-up of roughly 60K
+ * that divides to a firm low. Open, the pin floats and follows whatever
+ * pull it is given. So a pull-up and one read separates them, and the
+ * microfarad is why the settle is generous rather than a few
+ * microseconds.
+ *
+ * An open switch is a setting, not a fault. It reports "could not run"
+ * and names the switch, which turns "close S1 3-4 and try again" in the
+ * manual steps into a statement about how the board is right now. */
+static ui_test_state_t t_tape_switch(const detect_result_t *d, char *detail,
+                                     unsigned len, test_progress_fn p) {
+    const frank_pins_t *pins = d->board ? &d->board->pins : NULL;
+    if (!pins || pins->tape_in == PIN_NC) {
+        snprintf(detail, len, "no tape pin");
+        return TEST_NORUN;
+    }
+
+    const unsigned pin = (unsigned)pins->tape_in;
+    const gpio_function_t was = gpio_get_function(pin);
+
+    gpio_init(pin);
+    gpio_set_dir(pin, GPIO_IN);
+    gpio_pull_up(pin);
+    sleep_ms(60);                 /* 10K into 1uF is ~10 ms; allow six */
+    const bool floated_high = gpio_get(pin);
+    if (p) p(600, NULL);
+
+    /* And the other way, which is what tells a closed switch apart from
+     * a pin shorted to ground: closed, the 10K still wins against the
+     * pull-down and reads low; a hard short reads low too, but so does
+     * everything, so this is reported rather than diagnosed. */
+    gpio_pull_down(pin);
+    sleep_ms(60);
+    const bool held_low_pd = !gpio_get(pin);
+
+    gpio_disable_pulls(pin);
+    if (was != GPIO_FUNC_SIO && was != GPIO_FUNC_NULL) gpio_set_function(pin, was);
+    if (p) p(1000, NULL);
+
+    if (floated_high) {
+        snprintf(detail, len, "open: tape not wired to GP%u", pin);
+        return TEST_NORUN;
+    }
+
+    snprintf(detail, len, held_low_pd ? "closed: GP%u loaded to ground"
+                                      : "closed: GP%u pulled low", pin);
+    return TEST_PASS;
+}
+
+/* Everything on the bus, not just the parts we went looking for.
+ *
+ * Detection probes 0x68 and the codec and stops, which answers "is the
+ * chip I expect there". This answers "what is there", and the two
+ * failures it separates are worth separating: a bus with nothing on it
+ * at all is a pull-up or a wiring fault, while a bus that answers at
+ * some other address is working perfectly and populated differently
+ * than the descriptor believes.
+ *
+ * 0x00-0x07 and 0x78-0x7F are reserved by the specification and are not
+ * probed; addressing them means something other than "is anyone home". */
+static ui_test_state_t t_i2c_scan(const detect_result_t *d, char *detail,
+                                  unsigned len, test_progress_fn p) {
+    const frank_pins_t *pins = d->board ? &d->board->pins : NULL;
+    if (!pins || pins->i2c_sda == PIN_NC || pins->i2c_scl == PIN_NC) {
+        snprintf(detail, len, "no I2C pins");
+        return TEST_NORUN;
+    }
+
+    const unsigned sda = (unsigned)pins->i2c_sda, scl = (unsigned)pins->i2c_scl;
+    i2c_bb_init(sda, scl);
+
+    /* Both lines should be released high before anything is driven. A
+     * line stuck low is a fault the scan itself cannot report, because
+     * every address would simply fail to ack. */
+    const bool sda_high = gpio_get(sda), scl_high = gpio_get(scl);
+
+    unsigned found = 0;
+    uint8_t first[4];
+    for (uint8_t a = 0x08u; a <= 0x77u; a++) {
+        if (p) p((int)(((a - 0x08u) * 1000u) / (0x77u - 0x08u)), NULL);
+        if (!i2c_bb_probe(sda, scl, a)) continue;
+        if (found < count_of(first)) first[found] = a;
+        found++;
+    }
+    i2c_bb_release(sda, scl);
+    if (p) p(1000, NULL);
+
+    if (!sda_high || !scl_high) {
+        snprintf(detail, len, "%s stuck low",
+                 !sda_high && !scl_high ? "SDA and SCL"
+                                        : (!sda_high ? "SDA" : "SCL"));
+        return TEST_FAIL;
+    }
+
+    if (found == 0) {
+        /* The pull-ups are working, since both lines read high, so this
+         * is an empty bus rather than a broken one — which on a board
+         * whose parts are all optional is not a fault. */
+        snprintf(detail, len, "bus idles high, no devices");
+        return TEST_NORUN;
+    }
+
+    int n = snprintf(detail, len, "%u device%s:", found, found == 1 ? "" : "s");
+    for (unsigned i = 0; i < found && i < count_of(first) && n > 0 && (unsigned)n < len; i++)
+        n += snprintf(detail + n, len - (unsigned)n, " 0x%02X", first[i]);
+    if (found > count_of(first) && n > 0 && (unsigned)n < len)
+        snprintf(detail + n, len - (unsigned)n, " +more");
+
     return TEST_PASS;
 }
 
@@ -269,6 +458,8 @@ static ui_test_state_t t_gpio_short(const detect_result_t *d, char *detail,
 const frank_test_t frank_tests_board[] = {
     { "Video detect",   ICON_DISPLAY, 0, CAP_VIDEO_ANY, t_video_detect },
     { "Video output",   ICON_DISPLAY, 0, CAP_VIDEO_ANY, t_video_out    },
+    { "I2C bus scan",   ICON_CHIP,    CAP_I2C, 0, t_i2c_scan     },
+    { "Tape switch",    ICON_CASSETTE, CAP_TAPE_DIP_GATED, 0, t_tape_switch },
     { "RTC",            ICON_CLOCK,   CAP_RTC_DS3231, 0, t_rtc          },
     { "Unit serial",    ICON_CHIP_SMALL, CAP_ONEWIRE_DS2401, 0, t_onewire },
     { "GPIO short scan", ICON_CHIP,   0, 0, t_gpio_short   },

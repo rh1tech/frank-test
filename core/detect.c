@@ -26,6 +26,7 @@
  */
 
 #include "detect.h"
+#include "i2c_bb.h"
 #include "pinsig.h"
 #include "mem_test.h"
 
@@ -57,75 +58,11 @@ static void tier0_silicon(detect_result_t *r) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Bit-banged I2C                                                      */
+/* Bit-banged I2C — see core/i2c_bb.c, which this used to own. The scan
+ * and the RTC oscillator check needed register reads as well as an ack,
+ * so it moved rather than being written twice.                        */
 /* ------------------------------------------------------------------ */
 
-/* Bit-banged rather than hardware I2C on purpose. The probe has to run
- * before we know what board this is, which means before we can be sure
- * the pins map onto a controller instance the way the descriptor claims.
- * A software master works on any pin pair and cannot leave a peripheral
- * half-configured behind it. It is also slow, which is the right trade
- * for a bus with 4.7K pull-ups and unknown capacitance. */
-
-#define I2C_DELAY_US 5
-
-static void i2c_pin_release(unsigned pin) {   /* open-drain high */
-    gpio_set_dir(pin, GPIO_IN);
-}
-static void i2c_pin_drive_low(unsigned pin) {
-    gpio_put(pin, 0);
-    gpio_set_dir(pin, GPIO_OUT);
-}
-
-static void i2c_bb_init(unsigned sda, unsigned scl) {
-    gpio_init(sda); gpio_init(scl);
-    gpio_put(sda, 0); gpio_put(scl, 0);
-    i2c_pin_release(sda); i2c_pin_release(scl);
-    gpio_pull_up(sda); gpio_pull_up(scl);
-    busy_wait_us_32(I2C_DELAY_US * 4);
-}
-
-static void i2c_bb_start(unsigned sda, unsigned scl) {
-    i2c_pin_release(sda); busy_wait_us_32(I2C_DELAY_US);
-    i2c_pin_release(scl); busy_wait_us_32(I2C_DELAY_US);
-    i2c_pin_drive_low(sda); busy_wait_us_32(I2C_DELAY_US);
-    i2c_pin_drive_low(scl); busy_wait_us_32(I2C_DELAY_US);
-}
-
-static void i2c_bb_stop(unsigned sda, unsigned scl) {
-    i2c_pin_drive_low(sda); busy_wait_us_32(I2C_DELAY_US);
-    i2c_pin_release(scl);   busy_wait_us_32(I2C_DELAY_US);
-    i2c_pin_release(sda);   busy_wait_us_32(I2C_DELAY_US);
-}
-
-/* Returns true if the slave pulled SDA low for the ACK bit. */
-static bool i2c_bb_write_byte(unsigned sda, unsigned scl, uint8_t v) {
-    for (int i = 7; i >= 0; i--) {
-        if (v & (1u << i)) i2c_pin_release(sda); else i2c_pin_drive_low(sda);
-        busy_wait_us_32(I2C_DELAY_US);
-        i2c_pin_release(scl);   busy_wait_us_32(I2C_DELAY_US);
-        i2c_pin_drive_low(scl); busy_wait_us_32(I2C_DELAY_US);
-    }
-    i2c_pin_release(sda);       busy_wait_us_32(I2C_DELAY_US);
-    i2c_pin_release(scl);       busy_wait_us_32(I2C_DELAY_US);
-    bool ack = !gpio_get(sda);
-    i2c_pin_drive_low(scl);     busy_wait_us_32(I2C_DELAY_US);
-    return ack;
-}
-
-static bool i2c_bb_probe(unsigned sda, unsigned scl, uint8_t addr7) {
-    i2c_bb_start(sda, scl);
-    bool ack = i2c_bb_write_byte(sda, scl, (uint8_t)(addr7 << 1));  /* write */
-    i2c_bb_stop(sda, scl);
-    return ack;
-}
-
-static void i2c_bb_release(unsigned sda, unsigned scl) {
-    gpio_disable_pulls(sda); gpio_disable_pulls(scl);
-    gpio_set_dir(sda, GPIO_IN); gpio_set_dir(scl, GPIO_IN);
-}
-
-/* ------------------------------------------------------------------ */
 /* Bit-banged 1-Wire (DS2401)                                          */
 /* ------------------------------------------------------------------ */
 

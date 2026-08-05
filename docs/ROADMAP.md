@@ -16,7 +16,7 @@ one that owns up.
 |---|---|
 | `PSRAM_QMI`, `PSRAM_SOFTSPI` | Tested. Probe and address-seeded sweep |
 | `SD` | Tested. CID/CSD and sector 0 |
-| `RTC_DS3231` | Partly. An ack at 0x68, nothing more |
+| `RTC_DS3231` | Tested. Oscillator-stop flag and a live seconds tick |
 | `ONEWIRE_DS2401` | Tested. ROM read |
 | `LINK` | Tested. Handshake, throughput, slave reset |
 | `VIDEO_HDMI/VGA/COMPOSITE` | Tested. Frames counted per backend |
@@ -26,10 +26,11 @@ one that owns up.
 | `PS2` | Untested |
 | `USB_HOST`, `USB_DEVICE`, `USB_HUB`, `USB_MUX`, `PIO_USB` | Untested |
 | `GAMEPAD_DB9` | Untested |
-| `ESP01`, `ESP32_SPI` | Untested |
+| `ESP01` | Tested. AT, then AT+VER or AT+GMR |
+| `ESP32_SPI` | Untested |
 | `LED_PLAIN`, `LED_WS2812` | Untested |
-| `DIPSWITCH` | Untested |
-| `I2C` | Untested as a bus |
+| `DIPSWITCH` | Tested, as far as the hardware allows - see below |
+| `I2C` | Tested. Full 0x08-0x77 scan, and both lines checked idle-high |
 | `AUDIO_AMP`, `AUDIO_CODEC_I2C` | Untested |
 | `SD_4BIT` | Untested |
 
@@ -58,18 +59,26 @@ run* rather than failing.
 Those PS/2 connectors are a common cold-solder site, which is why this is
 probably the most valuable thing missing.
 
-### 2. Config DIP switches (`CAP_DIPSWITCH`)
+### 2. Config DIP switches (`CAP_DIPSWITCH`) — done, with a correction
 
-The descriptor has a `dip` pin, and *Manual Steps* already asks you to set
-switches the firmware cannot reach. Where the DIP is wired to a GPIO it can be
-read, and that turns an instruction into a verification.
+This was written expecting the switch positions to be readable. They are not,
+and the descriptor said so all along: `dip` and `tape_in` are the same pin, GP22,
+on all four boards that have it. The switch does not present a position. It
+connects the tape line to the pin or leaves it floating, and there is no bit
+anywhere for firmware to read.
 
-It would prove which switch positions are actually in force. More interestingly
-it changes other tests. The tape input is DIP-gated on three boards, so rather
-than "close S2 1-4 and try again", the firmware could say "S2 1-4 is open, that
-is why there is no signal".
+The consequence is readable, and it is the useful half. Closed, GP22 sits on the
+tape network — 10K to ground and a microfarad — which divides the chip's own
+~60K pull-up to a firm low. Open, the pin floats and follows the pull. One
+pull-up and one read separate them.
 
-One GPIO read, plus surfacing it in the *Manual Steps* panel.
+So *Tape switch* now reports whether S1 3-4 is closed, which is what "close the
+switch and try again" was really asking about. An open switch reports *could not
+run*: it is a setting, not a fault.
+
+Nothing here reads the other switch banks. The audio mux, the USB mux and the
+PSRAM SO link are not wired to GPIOs at all, and *Manual Steps* remains the only
+honest thing to say about them.
 
 ### 3. LEDs (`CAP_LED_PLAIN`, `CAP_LED_WS2812`)
 
@@ -82,24 +91,27 @@ whether you see red, then green, then blue, rather than in a pass/fail row.
 Mostly worth doing because a WS2812 that stays dark is usually a data-line fault,
 and that is worth catching.
 
-### 4. I²C bus scan (`CAP_I2C`)
+### 4. I²C bus scan (`CAP_I2C`) — done
 
-Detection already probes 0x68 and the codec address. A full 0x08 to 0x77 scan
-costs milliseconds and lists everything present.
+Full 0x08-0x77 scan, listing the first few addresses found. The reserved ranges
+either end are skipped: addressing them means something other than "is anyone
+home".
 
-It proves the bus pulls up and clocks regardless of what is on it. The output is
-useful beyond pass/fail: an unexpected address tells you something, and a bus
-with nothing on it separates a dead bus from a missing chip.
+Both lines are also checked idling high before anything is driven, because a line
+stuck low is a fault the scan itself cannot report — every address would simply
+fail to ack, which reads as an empty bus. An empty bus with healthy pull-ups
+reports *could not run* rather than failing, since every part on it is optional.
 
-### 5. RTC oscillator, not just presence
+### 5. RTC oscillator, not just presence — done
 
-The current test acks at 0x68 and stops. A DS3231 with a dead crystal or a flat
-backup cell acks perfectly.
+The seconds register is read, then read again just over a second later. A crystal
+that is present but not oscillating leaves it frozen, and that is the only direct
+evidence the part is keeping time rather than merely being on the bus.
 
-Read the seconds register, wait, read it again, and you know the oscillator runs.
-The status register also has an oscillator-stop flag, which is exactly what it is
-for and reports a battery that has been flat since the last power-down. Small
-change, much better test.
+The oscillator-stop flag is reported too, and deliberately not cleared: clearing
+it is how you acknowledge the stored time is not to be trusted, which is the
+operator's call. A part that is ticking now but has the flag set passes with the
+warning in its detail, because the fault it records is in the past.
 
 ---
 
@@ -219,15 +231,13 @@ exercises that path incidentally anyway.
 ## Suggested order
 
 1. PS/2 keyboard and mouse. Biggest gap, on the most boards
-2. DIP switch readback. Small, and improves the tape and audio guidance
-3. RTC oscillator check. Small, closes a real hole in a test that already exists
-4. I²C scan. Small, good diagnostic value
-5. USB HID host reporting. The data is already there
+2. LEDs. Needs the dialog pattern, same as the gamepad one
+3. USB HID host reporting. The data is already there
 6. Report export to SD. Makes the rig traceable
 7. LEDs and DB9 gamepads. Quick once the dialog pattern gets reused
 8. ESP-01S and ESP32. Needs modules to test against
 9. Burn-in loop and link soak. Once the rest is stable
 10. PIO-USB. After sorting out who owns which PIO
 
-The first four are each about an afternoon, and between them they would take
-tested capabilities from fourteen to eighteen of thirty-one.
+Tier 1 is done apart from PS/2 and the LEDs, both of which need a dialog rather
+than a pass/fail row. Tested capabilities are now eighteen of thirty-one.
