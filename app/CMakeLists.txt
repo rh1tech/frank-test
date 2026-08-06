@@ -44,6 +44,8 @@ add_executable(frank-test
     report.c
     dlg_burnin.c
     dlg_overclock.c
+    dlg_octune.c
+    dlg_rtc.c
     dlg_help.c
     dlg_keys.c
     dlg_led.c
@@ -212,4 +214,15 @@ endif()
 # takes the board, without waiting on detection.
 if(FRANK_VIDEO_BASE)
     target_compile_definitions(frank-test PRIVATE FRANK_VIDEO_BASE=${FRANK_VIDEO_BASE})
+endif()
+
+# Bring-up: skip reading the settings sector at start-up.
+#
+# settings_load() re-enters XIP through the bootrom, which is the most
+# fragile thing this firmware does at a raised clock. Skipping it splits
+# "this board cannot hold this clock" from "this firmware cannot start at
+# this clock" in one flash. Off in every shipped image; the board then
+# forgets its stored console preference, which is the point.
+if(FRANK_SKIP_SETTINGS)
+    target_compile_definitions(frank-test PRIVATE FRANK_SKIP_SETTINGS=1)
 endif()

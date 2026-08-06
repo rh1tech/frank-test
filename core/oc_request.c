@@ -19,9 +19,27 @@
 #define OC_B       2u
 #define OC_MAGIC   0x4F43u          /* 'OC' */
 
+const uint16_t oc_cpu_ladder[] = { 252, 378, 504 };
+const unsigned oc_cpu_ladder_len =
+    (unsigned)(sizeof(oc_cpu_ladder) / sizeof(oc_cpu_ladder[0]));
+
+uint8_t oc_vreg_for_clock(uint16_t mhz) {
+    if (mhz >= 504u) return 0x14u;   /* VREG_VOLTAGE_1_65 */
+    if (mhz >= 300u) return 0x13u;   /* VREG_VOLTAGE_1_60 */
+    return 0x12u;                    /* VREG_VOLTAGE_1_50 */
+}
+
+unsigned oc_ladder_index(uint16_t mhz) {
+    unsigned best = 0;
+    for (unsigned i = 0; i < oc_cpu_ladder_len; i++)
+        if (oc_cpu_ladder[i] <= mhz) best = i;
+    return best;
+}
+
 /* What the firmware currently runs, and what a request defaults to. */
 static oc_request_t s_live = {
-    .cpu_mhz = 252, .vreg_sel = 0, .psram_mhz = 133, .flash_mhz = 88,
+    /* Flash ceiling 66, not 88 — see the note in main().  */
+    .cpu_mhz = 252, .vreg_sel = 0, .psram_mhz = 133, .flash_mhz = 66,
 };
 
 void oc_request_set(const oc_request_t *r) {

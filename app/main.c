@@ -26,7 +26,9 @@
 #include "detect.h"
 #include "dlgs.h"
 #include "report.h"
+#include "oc_campaign.h"
 #include "oc_request.h"
+#include "rtc_ds3231.h"
 #include "psram_init.h"
 #include "frank_audio.h"
 #include "mem_test.h"
@@ -46,6 +48,7 @@ bool tests_link_poll(void);
 #include "hardware/clocks.h"
 #include "hardware/structs/timer.h"
 #include "hardware/vreg.h"
+#include "hardware/structs/powman.h"
 #include "hardware/watchdog.h"
 #include "pico/bootrom.h"
 #include "hardware/structs/qmi.h"
@@ -73,9 +76,23 @@ static ui_desktop_t       g_desk;
 static char g_mcu_line[32];
 static char g_serial[24];
 
+/* Armed only for a boot the overclock campaign asked for, and disabled
+ * the moment that campaign ends. A diagnostic firmware that reboots
+ * itself in the middle of a burn-in would be a worse fault than the hang
+ * it was guarding against, so this is never on during an ordinary
+ * session. See dlg_octune.c. */
+static bool g_watchdog_armed;
+
 /* Progress marker. This is a diagnostic firmware, so "it stopped and
- * told you nothing" is the one failure mode it must not have. */
+ * told you nothing" is the one failure mode it must not have.
+ *
+ * It is also where the campaign's watchdog is fed. Every long step of
+ * the boot is bracketed by one of these, so a candidate clock that takes
+ * the core down between two of them stops the pets and gets reset — and
+ * the last line printed says which step it died in, which is the other
+ * half of what makes an unattended run worth anything. */
 static void stage(const char *what) {
+    if (g_watchdog_armed) watchdog_update();
     printf("[boot] %s\n", what);
     stdio_flush();
 }
@@ -194,6 +211,54 @@ static void follow(unsigned i) {
 }
 
 /* ------------------------------------------------------------------ */
+/* The wall clock                                                      */
+/* ------------------------------------------------------------------ */
+
+/* Hours and minutes at the right end of the menu bar, on the two boards
+ * that carry a DS3231, and nothing at all on the rest.
+ *
+ * No seconds, and that is not laziness. There is no back buffer — the
+ * scanline renderer reads the framebuffer in place — so every change to
+ * the bar recomposes pixels the beam is displaying. Once a minute is
+ * invisible; once a second would be a ticking shimmer across the top of
+ * a screen someone is trying to read a test result on.
+ *
+ * The string is static and the interface holds a pointer to it, which is
+ * what keeps ui/ from needing to know an RTC exists.
+ */
+static char g_clock_text[8];
+
+static void clock_refresh(void) {
+    if (!rtc_present(&g_detect)) {
+        g_clock_text[0] = '\0';
+        ui_menubar_set_right(NULL);
+        return;
+    }
+
+    rtc_time_t t;
+    if (!rtc_read(&g_detect, &t, NULL)) {
+        /* The part answered during detection and does not now. Blank
+         * rather than frozen: a clock stuck at the last good reading is
+         * a lie that looks exactly like a working one. */
+        if (g_clock_text[0]) { g_clock_text[0] = '\0'; g_dirty = true; }
+        ui_menubar_set_right(NULL);
+        return;
+    }
+
+    char next[sizeof(g_clock_text)];
+    snprintf(next, sizeof(next), "%02u:%02u", (unsigned)t.hour, (unsigned)t.min);
+
+    if (strcmp(next, g_clock_text) != 0) {
+        snprintf(g_clock_text, sizeof(g_clock_text), "%s", next);
+        /* A full redraw, not the menu-only path: something else may have
+         * dirtied the screen in the same pass, and once a minute the
+         * saving is not worth the risk of skipping it. */
+        g_dirty = true;
+    }
+    ui_menubar_set_right(g_clock_text);
+}
+
+/* ------------------------------------------------------------------ */
 /* Board identity                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -249,6 +314,12 @@ static void gate_menus(void) {
                        ((g_detect.board->caps & CAP_LED_WS2812) &&
                         g_detect.board->pins.led_ws2812 != PIN_NC));
     ui_desktop_set_cmd_enabled(CMD_LED, leds);
+
+    /* Both halves of the question. The board has to declare an RTC, and
+     * the part has to have answered during detection — a board that
+     * should have one and does not is a fault to report, not a clock to
+     * offer to set. */
+    ui_desktop_set_cmd_enabled(CMD_SET_TIME, rtc_present(&g_detect));
 
     /* A report needs somewhere to put it. */
     const bool sd = g_detect.board &&
@@ -589,6 +660,39 @@ static void do_command(int cmd) {
             break;
         }
 
+        case CMD_OCTUNE: {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            dlg_octune(&ctx);
+            redraw();
+            break;
+        }
+
+        case CMD_SET_TIME: {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            const dlg_rtc_result_t rr = dlg_rtc(&ctx);
+            redraw();
+
+            /* Silent on cancel. The other three all changed something,
+             * or failed to, and both are worth a sentence. */
+            if (rr == DLG_RTC_SET) {
+                clock_refresh();
+                snprintf(g_dlg[0], sizeof(g_dlg[0]), "The clock is set, and the");
+                snprintf(g_dlg[1], sizeof(g_dlg[1]), "power-loss flag is clear.");
+                snprintf(g_dlg[2], sizeof(g_dlg[2]), "The RTC test will pass on");
+                snprintf(g_dlg[3], sizeof(g_dlg[3]), "the next run.");
+                show_dialog("Date and Time", 4);
+            } else if (rr == DLG_RTC_FAILED) {
+                snprintf(g_dlg[0], sizeof(g_dlg[0]), "The RTC would not take the");
+                snprintf(g_dlg[1], sizeof(g_dlg[1]), "write. Check the I2C bus -");
+                snprintf(g_dlg[2], sizeof(g_dlg[2]), "Board Info lists what");
+                snprintf(g_dlg[3], sizeof(g_dlg[3]), "answered on it.");
+                show_dialog("Date and Time", 4);
+            }
+            break;
+        }
+
         case CMD_REPORT: {
             char name[32];
             const report_result_t rr =
@@ -891,9 +995,75 @@ int main(void) {
      * clock on this same hardware without touching vreg. An overclock
      * past 252 is the case that justifies it, and then the flash
      * timings have to move with it. */
+    /* The flash ceiling is 66, not 88, and that is a measured choice
+     * rather than caution.
+     *
+     * set_flash_timings() derives an integer divisor from the system
+     * clock against this ceiling, so the ceiling is what decides the
+     * QSPI clock at every overclock. At 504 MHz a ceiling of 88 gives
+     * divisor 6 and runs the flash at 84 MHz; 66 gives divisor 8 and
+     * 63 MHz.
+     *
+     * On a Core 2U master, 84 MHz is past what the W25Q128 and this
+     * layout will hold: the board prints its banner at 504 and then
+     * takes a HardFault with CFSR and HFSR both zero — not a bad
+     * pointer, an instruction fetch that came back wrong. With the
+     * ceiling at 66 the same board booted and soaked clean, 129 passes,
+     * no errors, and read *faster* overall (37.8 MB/s against 35.0 at
+     * stock) because the core is doing more per second even though the
+     * QSPI clock is lower.
+     *
+     * frank-msx ships FLASH_SPEED=66 for the same parts, which is the
+     * other half of why an overclock that works there failed here. */
+    /* Identify the flash before anything moves, and never again.
+     *
+     * This is load-bearing for every overclock. The read leaves XIP and
+     * comes back through the bootrom, which restores its own XIP setup
+     * rather than boot2's — survivable at the clock the board starts at,
+     * fatal at 378 and 504. Doing it here, at the boot clock, means the
+     * cache is warm before the first clock change and no later caller
+     * ever issues the command again. See mem_test_flash_prime().
+     *
+     * Core 1 is not running yet, which is the other half of what this
+     * call needs. */
+    mem_test_flash_prime();
+
     oc_request_t oc = { .cpu_mhz = 252, .vreg_sel = 0,
-                        .psram_mhz = 133, .flash_mhz = 88 };
+                        .psram_mhz = 133, .flash_mhz = 66 };
     const bool overclocked = oc_request_take(&oc);
+
+    /* A campaign boot arms the watchdog before the clock moves.
+     *
+     * This is the whole reason an unattended overclock search is safe:
+     * a candidate that cannot start takes the board down before there is
+     * any interface to say so, and without this the only recovery is a
+     * person noticing and pulling the plug. With it, the board resets
+     * itself, comes up at stock — the request was consumed on the way
+     * in — and the campaign record still saying RUNNING is what tells
+     * dlg_octune_resume() that the candidate died.
+     *
+     * Armed here rather than after stdio, because the failures worth
+     * catching include the clock switch itself. */
+    {
+        oc_campaign_t camp;
+        if (overclocked && oc_campaign_load(&camp) &&
+            camp.state == OC_CAMP_RUNNING) {
+            g_watchdog_armed = true;
+            watchdog_enable(8000, false);
+        } else {
+            /* And off on every other boot, explicitly.
+             *
+             * The boot after a candidate that hung is exactly the boot
+             * that does not arm it, and it is also the boot that arrives
+             * out of a watchdog reset. If the timer were to survive that
+             * reset still enabled, nothing here would pet it and the
+             * board would reboot every eight seconds for ever — a
+             * failure far worse than the hang this is guarding against,
+             * and one that would look like the overclock having bricked
+             * the board. One instruction to make it impossible. */
+            watchdog_disable();
+        }
+    }
 
     if (overclocked && oc.vreg_sel) {
         /* Above 1.30 V the limit has to come off first, or the write is
@@ -902,6 +1072,39 @@ int main(void) {
          * rather than like a setting. */
         vreg_disable_voltage_limit();
         vreg_set_voltage((enum vreg_voltage)oc.vreg_sel);
+        sleep_ms(10);
+    } else {
+        /* Put it back, every other boot, explicitly.
+         *
+         * This is not belt and braces. The clock lives in the PLL and is
+         * reset by a warm reset, so a failed overclock comes back at
+         * 252 MHz on its own - which is the recovery this whole
+         * mechanism promises. The regulator does not: POWMAN sits in the
+         * always-on domain and a watchdog reset does not touch it, so a
+         * voltage raised for one overclocked boot stays raised for every
+         * boot after it.
+         *
+         * Measured on a Core 2U master over SWD: after one 1.65 V
+         * attempt, PLL_SYS was back at 252 MHz and POWMAN VREG still
+         * read VSEL 0x14. The board had been sitting at stock clock and
+         * a 50% overvolt for half an hour, with nothing on screen saying
+         * so, and only a power cycle would have cleared it.
+         *
+         * That is the opposite of what oc_request.h promises, and it is
+         * the dangerous direction to be wrong in: an overvolt that
+         * outlives the clock it was for buys no performance and spends
+         * the silicon's life. The limit goes back on with it, so the
+         * part is not left one stray write away from 3.3 V either. */
+        vreg_set_voltage(VREG_VOLTAGE_DEFAULT);
+        /* The SDK offers only the disable, so the ceiling goes back on
+         * by hand. POWMAN checks the top half of the written word for
+         * its password, so this is a read-modify-write of the low half
+         * with the password reapplied - not a hw_clear_bits(), which
+         * would send the mask rather than the password. */
+        powman_hw->vreg_ctrl =
+            POWMAN_PASSWORD_BITS |
+            ((powman_hw->vreg_ctrl &
+              ~(uint32_t)POWMAN_VREG_CTRL_DISABLE_VOLTAGE_LIMIT_BITS) & 0xFFFFu);
         sleep_ms(10);
     }
 
@@ -945,12 +1148,22 @@ int main(void) {
     /* The USB host first, because enumerating a keyboard takes long
      * enough to miss the boot window otherwise. Detection and the
      * benchmark below give it that time for free. */
+    stage("usb host");
     ui_input_init_usb();
 
+    /* Two markers rather than one, and they earn their place: reading
+     * the settings sector re-enters XIP through the bootrom, which is
+     * the most fragile thing this firmware does at a raised clock. When
+     * an overclocked boot dies, knowing whether it got past this is the
+     * first question — though note the UART FIFO is ~32 bytes, so the
+     * last line printed is not always the last line reached. */
+    stage("settings");
+#ifndef FRANK_SKIP_SETTINGS
     {
         frank_settings_t cs;
         if (settings_load(&cs)) g_console_kept = (cs.console != 0u);
     }
+#endif
 
     /* Bring-up: read every safe pin and print how it looks.
      *
@@ -1014,6 +1227,24 @@ int main(void) {
         }
     }
 #endif
+
+    /* Quieten the TurboSound before anything else claims the pins.
+     *
+     * An AY comes out of reset with its registers undefined and nothing
+     * on these boards clears it except the R bit in the shift-register
+     * word this firmware drives — so a board that was making a noise
+     * when the reset button was pressed carries on making it, through
+     * the reboot, until something writes to the chips. Reported as noise
+     * after reset, and that is exactly what it was.
+     *
+     * Here rather than later because the shift register shares GP9-11
+     * with I2S: doing it before the audio path exists means neither has
+     * to know about the other. No-op on every board without a
+     * TurboSound, which is all but one of them. */
+    if (g_detect.board && (g_detect.board->caps & CAP_TURBOSOUND)) {
+        stage("silence turbosound");
+        audio_ts_silence(&g_detect);
+    }
 
     /* Memory throughput, while core 1 is still parked. See
      * detect_benchmark() for why this cannot wait until the tests run. */
@@ -1130,6 +1361,7 @@ int main(void) {
 
     ui_desktop_set_cmd_checked(CMD_CONSOLE, g_console_kept);
     gate_menus();
+    clock_refresh();      /* so the first frame already has it */
 
     /* Composite renders its own text page rather than a scaled copy of
      * the desktop — see ui_video_tv.c. It needs the same state the
@@ -1192,6 +1424,37 @@ int main(void) {
     printf("[input] keyboard:%s  mouse:%s\n",
            ui_input_keyboard_connected() ? "yes" : "no",
            ui_input_mouse_connected() ? "yes" : "no");
+
+    /* A campaign owns the boot it was started from.
+     *
+     * The suite is skipped on those boots, deliberately: the soak is the
+     * test, running everything else would add half a minute per rung to
+     * a run whose whole appeal is that it finishes while you make tea,
+     * and several of the rows are dialogs that wait for a person.
+     *
+     * This either reboots into the next candidate and does not return,
+     * or falls through with the result on screen. */
+    {
+        oc_campaign_t camp;
+        /* RUNNING is a boot that carried a candidate; SHOWING is the
+         * stock-clock boot between two of them, where the table is held
+         * up long enough to read. Both belong to the campaign and
+         * neither should fall through to the test suite. */
+        if (oc_campaign_load(&camp) && (camp.state == OC_CAMP_RUNNING ||
+                                        camp.state == OC_CAMP_SHOWING)) {
+            const dlg_ctx_t ctx = { .detect = &g_detect,
+                                    .paint_background = paint_desktop };
+            stage("overclock auto-test");
+            dlg_octune_resume(&ctx, overclocked);
+            /* Said twice. dlg_octune_resume() disables it on every path
+             * that ends a campaign, and this is the one line that has to
+             * be true whatever happened in there: from here on the board
+             * is in an ordinary session and must not reset itself. */
+            g_watchdog_armed = false;
+            watchdog_disable();
+            redraw();
+        }
+    }
 
     stage("tests");
     run_all();
@@ -1353,6 +1616,16 @@ int main(void) {
          * Nothing on this board lets the master power-cycle the slave, so
          * one that boots late, gets reflashed, or reboots on its own has
          * to be noticed rather than forced into step. */
+        /* The clock. Polled rather than interrupt-driven because it is a
+         * bit-banged bus and a few hundred microseconds every five
+         * seconds is not worth an alarm; the display only changes when
+         * the minute does. */
+        static absolute_time_t next_clock_poll;
+        if (absolute_time_diff_us(get_absolute_time(), next_clock_poll) < 0) {
+            next_clock_poll = make_timeout_time_ms(5000);
+            clock_refresh();
+        }
+
         static absolute_time_t next_link_probe;
         if (absolute_time_diff_us(get_absolute_time(), next_link_probe) < 0) {
             next_link_probe = make_timeout_time_ms(5000);

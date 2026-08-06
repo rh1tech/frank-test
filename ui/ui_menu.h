@@ -61,6 +61,21 @@ typedef struct {
 /* Draw the bar itself. Always drawn, always at the top. */
 void ui_menubar_draw(ui_surface_t *s, const ui_menubar_t *mb);
 
+/* A short string set hard against the right edge of the bar — the wall
+ * clock, on the boards that have one.
+ *
+ * A pointer, not a copy, and not refreshed by this layer: ui/ knows
+ * nothing about an RTC and should not learn. app/ owns the buffer,
+ * decides how often it is worth rereading, and passes NULL on every
+ * board with no clock to read. Boards without an RTC therefore show an
+ * empty corner rather than a plausible invented time, which is the same
+ * rule the report follows.
+ *
+ * Keep it short. There is no clipping and nothing stops it running under
+ * the last menu title, so HH:MM is the intended size and the reason the
+ * seconds are not here. */
+void ui_menubar_set_right(const char *text);
+
 /* Draw the open pull-down, if any. Called after the windows so the menu
  * lands on top of everything, which is the one place in this interface
  * where z-order is not simply "later wins by accident". */

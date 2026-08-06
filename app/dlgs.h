@@ -86,4 +86,32 @@ void dlg_burnin(const dlg_ctx_t *c, registry_results_t *r);
  * stored: a clock the board cannot hold is undone by a power cycle. */
 void dlg_overclock(const dlg_ctx_t *c);
 
+/* Set the DS3231, on the boards that carry one.
+ *
+ * Opening on the time the part already holds makes an unchanged Enter
+ * mean "clear the oscillator-stop flag and leave the time alone", which
+ * is the smaller of the two things this was asked for. */
+typedef enum {
+    DLG_RTC_CANCELLED = 0,
+    DLG_RTC_SET,
+    DLG_RTC_FAILED,      /* the bus would not take the write */
+    DLG_RTC_NO_CLOCK,    /* no RTC on this board, or it did not answer */
+} dlg_rtc_result_t;
+
+dlg_rtc_result_t dlg_rtc(const dlg_ctx_t *c);
+
+/* The overclock campaign — see dlg_octune.c.
+ *
+ * Two entry points because it spans reboots. dlg_octune() is what the
+ * menu opens: it explains the method, takes the one choice worth taking,
+ * and starts the run. dlg_octune_resume() is what each boot of a running
+ * campaign calls instead of the test suite. */
+void dlg_octune(const dlg_ctx_t *c);
+
+/* `applied` is whether this boot actually took a clock request. False on
+ * a boot the campaign expected to be an attempt is the signature of a
+ * candidate that hung and was reset by the watchdog — main() is the only
+ * place that knows, so it says. */
+void dlg_octune_resume(const dlg_ctx_t *c, bool applied);
+
 #endif /* DLGS_H */

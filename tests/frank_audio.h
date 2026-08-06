@@ -79,4 +79,21 @@ bool audio_play(const detect_result_t *d, audio_src_t s, int ch,
  * silent with no error anywhere. */
 void audio_stop(const detect_result_t *d, audio_src_t s);
 
+/* Reset the TurboSound AYs and leave them silent. No-op on every board
+ * without one.
+ *
+ * Called during start-up, which is the whole point of it. An AY comes
+ * out of power-on with its registers in an undefined state, and nothing
+ * on these boards resets it except the R bit in the 74HC595 word this
+ * firmware drives — so a board that was making a noise when it was reset
+ * carries on making it, through a reboot, until something writes to the
+ * chips. That was reported as noise after reset and it is exactly what
+ * it sounds like.
+ *
+ * On megafrank the shift-register pins are the I2S pins wearing another
+ * hat, so this claims GP9-11 for the millisecond it takes and hands them
+ * back. Doing it before the audio path is brought up keeps that from
+ * mattering. */
+void audio_ts_silence(const detect_result_t *d);
+
 #endif /* FRANK_AUDIO_H */

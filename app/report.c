@@ -49,14 +49,12 @@
 
 #include "attest.h"
 #include "ff.h"
-#include "i2c_bb.h"
+#include "rtc_ds3231.h"
 #include "sdblock.h"
 
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-
-#define DS3231_ADDR 0x68u
 
 /* Same string the banner and the About box use; the build defines it. */
 #ifndef FIRMWARE_VERSION
@@ -64,30 +62,25 @@
 #endif
 #define REPORT_VERSION FIRMWARE_VERSION
 
-/* BCD, as everything in a DS3231 is. */
-static unsigned bcd(uint8_t v) { return (v >> 4) * 10u + (v & 0x0Fu); }
-
 /* "2026-08-05 14:31:07", or an empty string when the board has no RTC or
  * the RTC will not answer. The caller says so rather than substituting
- * something that looks like a date. */
+ * something that looks like a date.
+ *
+ * A clock flagging that it has lost time says so in the stamp itself.
+ * The registers still hold a plausible-looking date in that state — a
+ * frozen one — and a report that printed it unqualified would be the
+ * exact failure this file's header warns about. */
 static void rtc_stamp(const detect_result_t *d, char *out, unsigned len) {
     out[0] = '\0';
 
-    const frank_pins_t *p = d->board ? &d->board->pins : NULL;
-    if (!d->i2c_ds3231 || !p ||
-        p->i2c_sda == PIN_NC || p->i2c_scl == PIN_NC) return;
+    rtc_time_t t;
+    bool osf = false;
+    if (!rtc_read(d, &t, &osf)) return;
 
-    const unsigned sda = (unsigned)p->i2c_sda, scl = (unsigned)p->i2c_scl;
-    uint8_t r[7];
-
-    i2c_bb_init(sda, scl);
-    const bool got = i2c_bb_read_regs(sda, scl, DS3231_ADDR, 0x00u, r, sizeof(r));
-    i2c_bb_release(sda, scl);
-    if (!got) return;
-
-    snprintf(out, len, "20%02u-%02u-%02u %02u:%02u:%02u",
-             bcd(r[6]), bcd(r[5] & 0x1Fu), bcd(r[4]),
-             bcd(r[2] & 0x3Fu), bcd(r[1]), bcd(r[0]));
+    snprintf(out, len, "%04u-%02u-%02u %02u:%02u:%02u%s",
+             (unsigned)t.year, (unsigned)t.mon, (unsigned)t.day,
+             (unsigned)t.hour, (unsigned)t.min, (unsigned)t.sec,
+             osf ? "  (RTC has lost time)" : "");
 }
 
 static const char *state_name(ui_test_state_t st) {
@@ -157,7 +150,10 @@ report_result_t report_write(const detect_result_t *d,
     static char buf[REPORT_MAX];
     int at = 0;
 
-    char stamp[32];
+    /* Room for the date and the lost-time qualifier both. Thirty-two was
+     * enough for the date alone and would silently cut the qualifier in
+     * half, which is the one part of the line that must not be. */
+    char stamp[48];
     rtc_stamp(d, stamp, sizeof(stamp));
 
     at = append(buf, at, "\r\n=== FRANK test firmware v%s ===\r\n", REPORT_VERSION);

@@ -52,6 +52,12 @@ static int menu_w(const ui_menu_t *m) {
     return m->is_mark ? MARK_W : ui_text_width(m->title) + BAR_PAD_X * 2;
 }
 
+/* Owned by app/, which is also what keeps it current. NULL until some
+ * board turns out to have a clock. */
+static const char *s_right;
+
+void ui_menubar_set_right(const char *text) { s_right = text; }
+
 void ui_menubar_draw(ui_surface_t *s, const ui_menubar_t *mb) {
     ui_clip_reset(s);
 
@@ -90,6 +96,15 @@ void ui_menubar_draw(ui_surface_t *s, const ui_menubar_t *mb) {
                 ui_hline(s, ux, ly + UI_CHAR_H, UI_CHAR_W - 1, fg);
             }
         }
+    }
+
+    /* The clock, last, so it sits over the bar rather than under a title
+     * that grew. Embossed like an unopened title, because that is what
+     * it is: a label on the bar, not a control. */
+    if (s_right && s_right[0]) {
+        const int ly = (UI_MENUBAR_H - 2 - UI_CHAR_H) / 2;
+        ui_text_embossed(s, s->w - BAR_PAD_X - ui_text_width(s_right), ly,
+                         s_right, UI_BLACK);
     }
 }
 

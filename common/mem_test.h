@@ -30,8 +30,39 @@
 #include "link_proto.h"
 
 /* Read the flash JEDEC ID (0x9F) and the 64-bit unique ID.
- * Must run with the other core parked. */
+ *
+ * Reads the part once and answers from a cache ever after. Both values
+ * are properties of the silicon and cannot change while it is powered,
+ * so a repeat read could only return the same answer — and the read is
+ * the dangerous part. See mem_test_flash_prime().
+ *
+ * The first call must run with the other core parked. */
 void mem_test_flash_identify(uint32_t *jedec_id, uint8_t unique_id[8]);
+
+/* Do that first read now, while the clock is still the one the board
+ * started at, and throw the answer away.
+ *
+ * THIS IS NOT AN OPTIMISATION. flash_do_cmd() leaves XIP and returns
+ * through the bootrom's flash_enter_cmd_xip(), which installs the
+ * bootrom's own XIP configuration rather than the one boot2 set up.
+ * At the clock the board boots at, what it installs works. At 378 or
+ * 504 MHz it does not: the next instruction fetch comes back wrong and
+ * the core takes a HardFault with CFSR and HFSR both zero — no faulting
+ * address, because nothing dereferenced anything.
+ *
+ * Measured on a Core 2U master: at 504 MHz the board printed
+ * "[boot] settings" and died. Skipping the settings read moved the
+ * death to "[boot] detect", which issues the same command. Every call
+ * site was fatal in turn, which is what made it clear the call was the
+ * fault rather than any one caller.
+ *
+ * So main() calls this before it raises the clock, and every later
+ * caller — settings_offset(), detect_run() — gets the cached answer and
+ * never touches the QMI again. Overclocking works because nothing
+ * re-enters XIP once the clock is up.
+ *
+ * Must run with the other core parked, and before any clock change. */
+void mem_test_flash_prime(void);
 
 /* Capacity implied by the JEDEC ID's third byte (2^N bytes). Returns 0
  * when the ID looks implausible. */

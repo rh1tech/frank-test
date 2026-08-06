@@ -20,6 +20,7 @@
 
 #include "hardware/flash.h"
 #include "hardware/regs/addressmap.h"
+#include "hardware/structs/qmi.h"
 #include "hardware/sync.h"
 #include "hardware/xip_cache.h"
 #include "pico/stdlib.h"
@@ -46,25 +47,73 @@
 /* Flash                                                              */
 /* ------------------------------------------------------------------ */
 
+/* Read once, then answered from here forever after.
+ *
+ * Not an optimisation. Both of these are properties of the part and
+ * cannot change while the board is powered, so a second read can only
+ * return what the first one did — and the reads themselves are the
+ * problem. See mem_test_flash_prime(). */
+static bool     s_id_valid;
+static uint32_t s_id_jedec;
+static uint8_t  s_id_unique[8];
+
 void mem_test_flash_identify(uint32_t *jedec_id, uint8_t unique_id[8]) {
+    if (s_id_valid) {
+        if (jedec_id)  *jedec_id = s_id_jedec;
+        if (unique_id) memcpy(unique_id, s_id_unique, sizeof(s_id_unique));
+        return;
+    }
+
     /* 0x9F + three ID bytes. flash_do_cmd drops out of XIP for the
      * duration, so this must not race code executing from flash on the
      * other core — see the ordering note in mem_test.h. */
     uint8_t tx[4] = { 0x9F, 0, 0, 0 };
     uint8_t rx[4] = { 0 };
 
+    /* Put the QMI timing back afterwards, because the bootrom will not.
+     *
+     * flash_do_cmd() leaves XIP through the bootrom and comes back
+     * through flash_enter_cmd_xip(), which installs the bootrom's
+     * *default* XIP configuration rather than whatever was there before.
+     * The custom divisor and RX delay that set_flash_timings() worked
+     * out for the running system clock are simply gone, and every
+     * instruction fetched after this call is read with the wrong timing.
+     *
+     * At 252 MHz the default happens to be survivable, which is why this
+     * went unnoticed. At 378 and 504 it is not: the board printed
+     * "[boot] settings" and died on the next fetch, every time, while
+     * the very same clock booted fine when nothing had called this. That
+     * is the whole reason an overclock that runs for hours under
+     * murmgenesis would not survive start-up here — murmgenesis has no
+     * settings sector to read, so it never re-enters XIP after raising
+     * the clock.
+     *
+     * Saving and restoring the register is enough: the value being put
+     * back is the one the code was already executing under, so the write
+     * cannot make the fetch that follows it any less valid. */
+    const uint32_t timing = qmi_hw->m[0].timing;
+
     uint32_t save = save_and_disable_interrupts();
     flash_do_cmd(tx, rx, 4);
+    qmi_hw->m[0].timing = timing;
     restore_interrupts(save);
 
-    if (jedec_id)
-        *jedec_id = ((uint32_t)rx[1] << 16) | ((uint32_t)rx[2] << 8) | rx[3];
+    s_id_jedec = ((uint32_t)rx[1] << 16) | ((uint32_t)rx[2] << 8) | rx[3];
 
-    if (unique_id) {
-        save = save_and_disable_interrupts();
-        flash_get_unique_id(unique_id);
-        restore_interrupts(save);
-    }
+    save = save_and_disable_interrupts();
+    flash_get_unique_id(s_id_unique);
+    qmi_hw->m[0].timing = timing;
+    restore_interrupts(save);
+
+    /* Both reads done, so nothing needs to come back here. */
+    s_id_valid = true;
+
+    if (jedec_id)  *jedec_id = s_id_jedec;
+    if (unique_id) memcpy(unique_id, s_id_unique, sizeof(s_id_unique));
+}
+
+void mem_test_flash_prime(void) {
+    mem_test_flash_identify(NULL, NULL);
 }
 
 uint32_t mem_test_flash_capacity(uint32_t jedec_id) {

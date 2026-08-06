@@ -599,6 +599,32 @@ bool audio_play(const detect_result_t *d, audio_src_t s, int ch,
     }
 }
 
+void audio_ts_silence(const detect_result_t *d) {
+    if (!d || !d->board) return;
+    if (!(d->board->caps & CAP_TURBOSOUND)) return;
+
+    const frank_pins_t *pins = &d->board->pins;
+    if (!ay_claim(pins)) return;
+
+    /* Reset first, then say it again in registers.
+     *
+     * The R bit clears the chip, but it is one line into a part that has
+     * just been powered and whose reset behaviour is worth not relying
+     * on alone. Writing the mixer off and all three volumes to zero
+     * afterwards leaves nothing to argue about, on both chips, and is
+     * what the audio dialog does before it starts a pass. */
+    ay_send(pins, AY_RES);
+    sleep_ms(5);
+    ay_send(pins, AY_Z);
+
+    for (int chip = 0; chip < 2; chip++) {
+        ay_write(pins, chip, 7, 0x3F);                   /* everything off */
+        for (int ch = 0; ch < 3; ch++)
+            ay_write(pins, chip, (uint8_t)(8 + ch), 0);  /* and silent     */
+    }
+    ay_send(pins, AY_Z);
+}
+
 void audio_stop(const detect_result_t *d, audio_src_t s) {
     if (!d || !d->board) return;
     const frank_pins_t *pins = &d->board->pins;

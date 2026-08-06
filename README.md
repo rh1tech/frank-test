@@ -142,6 +142,12 @@ playing.
 Enter BOOTSEL has no keyboard shortcut, on purpose. It is the one command that
 ends the session, and a stray keypress used to trigger it.
 
+The clock sits at the right end of the menu bar, on the two boards that carry a
+DS3231, and nowhere else. Hours and minutes only: there is no back buffer, so
+anything that changed once a second would shimmer across the top of a screen
+someone is trying to read a result on. A board with no RTC shows an empty corner
+rather than an invented time, for the same reason the report does.
+
 ### Reading the results
 
 | Mark | Meaning |
@@ -362,6 +368,12 @@ configured over I²C first: it wires no master clock, so the PLL has to be
 referenced to the bit clock and the missing-SCK error ignored. Miss either and
 the part acknowledges every write and stays silent.
 
+**TurboSound is silenced during start-up**, before anything else claims the pins.
+An AY comes out of reset with its registers undefined, and nothing on these
+boards resets it except the R bit in the 74HC595 word — so a board that was making
+a noise when the reset button was pressed carried on making it, through the
+reboot, until something wrote to the chips.
+
 On a board with an audio mux the dialog tells you which switch positions that
 source needs. The mux is a 4:1 selector rather than two enables, so setting both
 switches picks ground. That is silence, and it looks exactly like a dead
@@ -428,6 +440,47 @@ joint that conducts until something expands.
 intermittent fault, and lumping the two together would bury a real one under forty
 of them. There is no cycle limit: you are the only party who knows how much
 evidence the board needs.
+
+### Overclock auto-test, `File` ▸ `Overclock Auto-test`
+
+Every clock above the one the board is running is tried in turn, one reboot each,
+and soaked with the flash CRC, a PSRAM sweep and an SRAM pattern check. The run
+stops at the first clock that does not hold and reports the highest that did.
+Eight or nine rungs at thirty seconds each is about five minutes.
+
+What it reports is *the highest clock that survived N seconds*, not the maximum
+stable overclock, and the difference is not pedantry. Thirty seconds finds the
+clocks that are grossly wrong — QSPI timing fallen over, PSRAM reading back
+short, the core faulting. It cannot find the one that fails after forty minutes
+in a warm case. Burn-in asks that question, for as long as you are willing to
+wait.
+
+Core voltage is chosen once and held for the whole run. Searching clock and
+voltage together is a two-dimensional problem with a reboot per point, and it
+would report a pair as though the second number were free — when raising the core
+voltage is the part of an overclock that costs you silicon. Run it again at a
+higher voltage if that is a trade you want to make.
+
+Nothing is stored. Each candidate rides the same one-boot mechanism `Clocks and
+Voltage` uses, and the watchdog is armed before the clock moves — so a candidate
+that cannot start resets the board, which comes back at stock and records it as a
+failure. The worst case left is a hang the watchdog cannot reach, which costs a
+power cycle and abandons the run. No state this writes can stop a board booting.
+
+### Date and time, `Board` ▸ `Set Date and Time`
+
+Only on MegaFRANK and FRANK Next, and only when the DS3231 answered. Five fields,
+seconds written as zero.
+
+Opening on the time the part already holds means pressing `Enter` with nothing
+changed writes the same time back and clears the oscillator-stop flag with it —
+which is the "just reset the power-loss bit" case, using the control that was
+already there. The flag is never cleared automatically: it is the only evidence
+that a coin cell has gone flat, and the RTC test reports it as such.
+
+There is no NTP. The two boards with an RTC and the boards with a network
+interface are disjoint sets except FRANK Next, whose ESP32 runs firmware this
+repository does not own.
 
 ### NES gamepads, `Tests` ▸ `NES Gamepad(s)`
 

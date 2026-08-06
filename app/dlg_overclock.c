@@ -70,10 +70,10 @@
 static int s_apply_x, s_apply_y, s_apply_w, s_apply_h;
 static int s_cancel_x, s_cancel_w;
 
-/* The clocks the fleet actually runs. 150 is the SDK default and the way
- * back if something has been pushed too far. */
-static const uint16_t CPU[]   = { 150, 200, 252, 264, 300, 308, 336, 378,
-                                  396, 420, 450, 504 };
+/* The clocks the fleet actually runs, from oc_request.c so that the
+ * auto-test climbs the same list this offers. */
+#define CPU      oc_cpu_ladder
+#define CPU_LEN  ((int)oc_cpu_ladder_len)
 /* Selector values, not millivolts — see hardware/vreg.h. Stops at 1.65,
  * which is as far as any firmware in this fleet has gone. */
 static const uint8_t  VREG[]  = { 0, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
@@ -214,7 +214,7 @@ void dlg_overclock(const dlg_ctx_t *c) {
     oc_request_current(&cur);
 
     sel_t sel = {
-        .cpu   = index_of(CPU, (int)(sizeof(CPU) / sizeof(CPU[0])), cur.cpu_mhz),
+        .cpu   = index_of(CPU, CPU_LEN, cur.cpu_mhz),
         .vreg  = index_of8(VREG, (int)sizeof(VREG), cur.vreg_sel),
         .psram = index_of8(PSRAM, (int)sizeof(PSRAM), cur.psram_mhz),
         .flash = index_of8(FLASH, (int)sizeof(FLASH), cur.flash_mhz),
@@ -236,7 +236,7 @@ void dlg_overclock(const dlg_ctx_t *c) {
         while (k != UI_KEY_NONE) {
             int *v = (row == 0) ? &sel.cpu : (row == 1) ? &sel.vreg
                    : (row == 2) ? &sel.psram : &sel.flash;
-            const int n = (row == 0) ? (int)(sizeof(CPU) / sizeof(CPU[0]))
+            const int n = (row == 0) ? CPU_LEN
                         : (row == 1) ? (int)sizeof(VREG)
                         : (row == 2) ? (int)sizeof(PSRAM) : (int)sizeof(FLASH);
 

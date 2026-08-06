@@ -45,6 +45,10 @@ static ui_menu_item_t file_items[] = {
      * taking them back from a running PS/2 mouse is not something this
      * firmware can do safely. */
     { "Clocks and Voltage",  0,   true, false, CMD_OVERCLOCK },
+    /* Enabled everywhere. Every board in the fleet has a system clock
+     * and every one of them can be asked to run faster than it does;
+     * whether it holds is the question the item exists to answer. */
+    { "Overclock Auto-test", 0,   true, false, CMD_OCTUNE },
     { "Save Report to SD",   0,   true, false, CMD_REPORT },
     { "Serial Console",      0,   true, false, CMD_CONSOLE },
     { NULL,                  0,   true, false, CMD_NONE },
@@ -62,6 +66,9 @@ static ui_menu_item_t file_items[] = {
 
 static ui_menu_item_t board_items[] = {
     { "Set Board...",        'S', true, false, CMD_SET_BOARD },
+    /* Only on the boards that carry a DS3231, and only when it answered
+     * — which is why this starts disabled and gate_menus() decides. */
+    { "Set Date and Time...", 0,  false, false, CMD_SET_TIME },
 };
 
 /* The one place the operator can override what no probe can determine.
@@ -110,8 +117,8 @@ static ui_menu_item_t tests_items[] = {
  * was enabled, and simply did not appear, because this said three. */
 static const ui_menu_t menus[] = {
     { "",        mark_items,   5, true,  'A' },
-    { "File",    file_items,   6, false, 'F' },
-    { "Board",   board_items,  1, false, 'B' },
+    { "File",    file_items,   7, false, 'F' },
+    { "Board",   board_items,  2, false, 'B' },
     { "Video",   video_items,  7, false, 'V' },
     { "Audio",   audio_items,  4, false, 'U' },
     { "Tests",   tests_items,  9, false, 'T' },
