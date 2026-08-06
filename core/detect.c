@@ -389,8 +389,9 @@ void detect_run(detect_result_t *out) {
 
     /* No stored board.
      *
-     * There was one, in a dedicated flash sector, so the core2/core2u
-     * question would be asked once per board rather than once per boot.
+     * There was one, in a dedicated flash sector, so a board the
+     * fingerprint could not place would be named once rather than once
+     * per boot.
      * It is gone: a stored answer is invisible, outlives the operator
      * changing their mind, and travels with the firmware image rather
      * than with the board. A reset should start from what the hardware
@@ -413,8 +414,8 @@ void detect_run(detect_result_t *out) {
     }
 
     /* A disagreement is only meaningful when the fingerprint actually
-     * preferred something. When two descriptors tie — core2 and core2u
-     * share a signature exactly — `auto_guess` is whichever the table
+     * preferred something. When two descriptors tie, `auto_guess` is
+     * whichever the table
      * happens to list first, and warning that the declared board
      * "does not look like" an arbitrary tie-break is worse than saying
      * nothing: it teaches the operator to ignore the one warning that

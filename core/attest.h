@@ -34,6 +34,7 @@ typedef enum {
     ATTEST_AUDIO_I2S,
     ATTEST_AUDIO_TS,
     ATTEST_AUDIO_PCM5122,
+    ATTEST_AUDIO_TLV320,
     ATTEST_SUBJECT_COUNT
 } attest_subject_t;
 

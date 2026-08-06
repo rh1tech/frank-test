@@ -21,8 +21,8 @@
  * Three findings from the extraction are worth stating up front, because
  * they contradict what the board diagrams suggest:
  *
- *  1. GP22 is the tape input on every board that has one, except core2u
- *     (GP45). On frank, megafrank and minifrank the CD4069 output does
+ *  1. GP22 is the tape input on every board that has one, except the
+ *     Core 2U revision (GP45). On frank, megafrank and minifrank the CD4069 output does
  *     not reach the MCU directly — a config switch bridges it onto GP22
  *     (JP1 6<->7, S1 9<->3, S2 1<->4 respectively). The pin is therefore
  *     only the tape input when the operator has closed that switch, which
@@ -395,26 +395,44 @@ const frank_board_desc_t frank_board_table[] = {
 
 
 /* ---------------------------------------------------------------- */
-/* core2 and core2u share a pin map exactly; core2u adds tape on GP45.
- * That single pin is the only electrical difference visible from the
- * master, and it is a bare pad versus a CMOS input — roughly 5 pF. The
- * detector reports the pair as ambiguous rather than guessing. */
+/* One descriptor for Core 2 and Core 2U.
+ *
+ * They share a pin map exactly. The U revision adds a tape input on
+ * GP45 and a USB hub behind a mux, and none of that is visible from the
+ * master: GP45 is a bare pad on one and a CMOS input on the other,
+ * about 5 pF apart, which no probe here can measure. So the detector
+ * used to tie, report AMBIGUOUS, and decline to run anything until an
+ * operator chose from a menu — on every board of the type, to separate
+ * two boards whose tests are otherwise identical.
+ *
+ * The union is declared rather than the intersection, and that is a
+ * deliberate trade. On a Core 2U everything is covered. On the older
+ * non-U revision the tape and USB-hub rows are asking after hardware
+ * that is not fitted, so they will not pass — which is the wrong answer
+ * in the smaller direction, and much cheaper than making every operator
+ * of both revisions answer a question before the rig will do anything.
+ * The note below says so on screen. */
 {
     .id = FRANK_BOARD_CORE2, .name = "FRANK Core 2",
     .slug = "core2",
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_MASTER,
     .caps = CAP_VIDEO_HDMI | CAP_AUDIO_I2S | CAP_SD | CAP_PSRAM_QMI
-          | CAP_LINK | CAP_USB_DEVICE | CAP_USB_HOST | CAP_LED_WS2812,
+          | CAP_LINK | CAP_TAPE_IN
+          | CAP_USB_DEVICE | CAP_USB_HOST | CAP_USB_HUB | CAP_USB_MUX
+          | CAP_LED_WS2812,
     .pins = { PINS_NONE, PINS_UART01, PINS_SD_SPI, PINS_I2S_TDA,
               .video_base = 12, .led_ws2812 = 46, .psram_cs = 47,
+              .tape_in = 45,
               .link_a_data = 20, .link_b_data = 30,
               .link_fs = 40, .link_db_out = 41, .link_db_in = 42 },
     SIG(sig_core2_master),
     .flash_bytes = 16u * 1024u * 1024u,
     .psram_bytes = 8u * 1024u * 1024u,
-    .manual_note = "GP43 is drawn to the slave RUN pin but the net does not "
-                   "exist on this revision; the master cannot reset the slave "
-                   "in hardware. FS (GP40) is used as a reboot request instead.",
+    .manual_note = "Covers Core 2 and Core 2U. Tape (GP45), the USB hub and "
+                   "the mux (S5) are on the U revision only - on a plain "
+                   "Core 2 those rows have nothing to find. GP43 is drawn to "
+                   "the slave RUN pin but the net does not exist on either "
+                   "revision; FS (GP40) is the reboot request instead.",
 },
 
 {
@@ -432,44 +450,6 @@ const frank_board_desc_t frank_board_table[] = {
     .psram_bytes = 8u * 1024u * 1024u,
     .manual_note = NULL,
 },
-
-/* ---------------------------------------------------------------- */
-{
-    .id = FRANK_BOARD_CORE2U, .name = "FRANK Core 2U",
-    .slug = "core2u",
-    .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_MASTER,
-    .caps = CAP_VIDEO_HDMI | CAP_AUDIO_I2S | CAP_SD | CAP_PSRAM_QMI
-          | CAP_LINK | CAP_TAPE_IN
-          | CAP_USB_DEVICE | CAP_USB_HOST | CAP_USB_HUB | CAP_USB_MUX
-          | CAP_LED_WS2812,
-    .pins = { PINS_NONE, PINS_UART01, PINS_SD_SPI, PINS_I2S_TDA,
-              .video_base = 12, .led_ws2812 = 46, .psram_cs = 47,
-              .tape_in = 45,
-              .link_a_data = 20, .link_b_data = 30,
-              .link_fs = 40, .link_db_out = 41, .link_db_in = 42 },
-    SIG(sig_core2_master),
-    .flash_bytes = 16u * 1024u * 1024u,
-    .psram_bytes = 8u * 1024u * 1024u,
-    .manual_note = "S5 selects the USB mux. GP43/slave-RUN is unconnected on "
-                   "this revision, as on core2.",
-},
-
-{
-    .id = FRANK_BOARD_CORE2U, .name = "FRANK Core 2U (slave)",
-    .slug = "core2u-slave",
-    .mcu = FRANK_MCU_RP2350A, .role = FRANK_ROLE_SLAVE,
-    .caps = CAP_PSRAM_QMI | CAP_LINK | CAP_USB_DEVICE | CAP_LED_PLAIN,
-    .pins = { PINS_NONE,
-              .uart_tx = 24, .uart_rx = 25,
-              .led_plain = 26, .psram_cs = 0,
-              .link_a_data = 1, .link_b_data = 11,
-              .link_fs = 21, .link_db_in = 22, .link_db_out = 23 },
-    SIG(sig_core2_slave),
-    .flash_bytes = 16u * 1024u * 1024u,
-    .psram_bytes = 8u * 1024u * 1024u,
-    .manual_note = NULL,
-},
-
 
 /* ---------------------------------------------------------------- */
 {

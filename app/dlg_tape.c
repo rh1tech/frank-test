@@ -14,7 +14,7 @@
  *
  * A CD4069 hex inverter wired as a squaring comparator. Audio goes in,
  * a clean digital square wave comes out on one GPIO — GP22 on every
- * board that has it except core2u, which uses GP45. There is no ADC and
+ * board that has it except the Core 2U revision, which uses GP45. There is no ADC and
  * no PIO involved: the pin is either high or low, and the only thing
  * worth measuring is when it changes.
  *

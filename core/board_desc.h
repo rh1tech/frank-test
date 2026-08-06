@@ -97,7 +97,7 @@ typedef struct {
     int8_t pad_latch, pad_clk, pad_d1, pad_d2;
 
     /* Tape input, via a CD4069 used as a squaring comparator. GP22 on
-     * every board that has it except core2u (GP45). On frank, megafrank
+     * every board that has it except the Core 2U revision (GP45). On frank, megafrank
      * and minifrank the connection is gated by a config DIP — the pin is
      * only the tape input when the switch is closed. */
     int8_t tape_in;
@@ -205,7 +205,7 @@ const frank_board_desc_t *frank_board_desc(frank_board_id_t id, frank_role_t rol
  * before knowing which one is under us.
  *
  * It exists because of a circularity found on real hardware: the dialog
- * that asks "core2 or core2u?" needs a screen, and bringing the screen
+ * that asks which board this is needs a screen, and bringing the screen
  * up needed the answer. Something has to be able to draw before the
  * board is known, and this is the least-assuming thing that can. */
 const frank_board_desc_t *frank_board_fallback(void);

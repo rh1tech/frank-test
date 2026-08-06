@@ -39,8 +39,20 @@ typedef enum {
     FRANK_BOARD_MINIFRANK,        /* RP2350A, HDMI + VGA                */
     FRANK_BOARD_ZEROFRANK,        /* RP2350A, HDMI + PIO-USB            */
     FRANK_BOARD_OLDSKOOLFRANK,    /* PGA2350, TDA1545A, DB9             */
-    FRANK_BOARD_CORE2,            /* RP2350B + RP2350A                  */
-    FRANK_BOARD_CORE2U,           /* as CORE2, + tape + USB hub/mux     */
+    /* Core 2 and Core 2U are one entry.
+     *
+     * They shared a pin map exactly, and the only electrical difference
+     * visible from the master was GP45: a bare pad on one, a CMOS input
+     * on the other, about 5 pF apart. Nothing could measure that, so the
+     * detector tied, called the pair ambiguous, and refused to run a
+     * single test until somebody picked one from a menu — which is a
+     * question the operator was being asked on every board of the type,
+     * to distinguish two boards that test identically.
+     *
+     * One entry with the union of their hardware asks nothing and covers
+     * both. See the descriptor in board_table.c for what that costs on
+     * the older revision. */
+    FRANK_BOARD_CORE2,            /* RP2350B + RP2350A, U revision too  */
     FRANK_BOARD_NEXT,             /* RP2350B + ESP32                    */
     FRANK_BOARD_Z0PA,             /* Waveshare RP2350-PiZero            */
 

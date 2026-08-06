@@ -53,6 +53,7 @@
 #include "registry.h"
 
 #include "pcm5122.h"
+#include "tlv320.h"
 
 #include "audio_i2s.pio.h"
 #include "hardware/clocks.h"
@@ -101,6 +102,7 @@ const char *audio_src_name(audio_src_t s) {
         case AUDIO_SRC_I2S: return "TDA (I2S)";
         case AUDIO_SRC_TS:  return "TurboSound";
         case AUDIO_SRC_PCM5122: return "PCM5122";
+        case AUDIO_SRC_TLV320:  return "TLV320 codec";
         default:            return "?";
     }
 }
@@ -111,6 +113,7 @@ uint32_t audio_src_cap(audio_src_t s) {
         case AUDIO_SRC_I2S: return CAP_AUDIO_I2S;
         case AUDIO_SRC_TS:  return CAP_TURBOSOUND;
         case AUDIO_SRC_PCM5122: return CAP_AUDIO_PCM5122;
+        case AUDIO_SRC_TLV320:  return CAP_AUDIO_CODEC_I2C;
         default:            return 0;
     }
 }
@@ -317,6 +320,24 @@ static bool i2s_pass_on(int data_pin, int clk_pin, int ch,
  * Reconfigured on every pass rather than once. The hat can be plugged in
  * while this dialog is looping, which is a reasonable thing for an
  * operator to try, and it costs nine register writes. */
+/* frank_next's codec.
+ *
+ * Same shape as pcm_pass() and the same caveat: the codec is configured
+ * before the bit clock exists, so its PLL locks when the I2S state
+ * machine starts rather than while it is being told to. The PCM5122
+ * path does the same and works. If a FRANK Next is silent here with
+ * every write acknowledged, that ordering is the first thing to try
+ * inverting - see tlv320.h.
+ *
+ * Unlike the hat, this codec is on the board's own I2S pins. */
+static bool tlv_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
+    if (pins->i2c_sda == PIN_NC || pins->i2c_scl == PIN_NC) return false;
+    if (!tlv320_init((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl))
+        return false;
+
+    return i2s_pass_on(pins->i2s_data, pins->i2s_clk_base, ch, abort_fn);
+}
+
 static bool pcm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
     if (pins->i2c_sda == PIN_NC || pins->i2c_scl == PIN_NC) return false;
     if (!pcm5122_init((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl))
@@ -595,6 +616,7 @@ bool audio_play(const detect_result_t *d, audio_src_t s, int ch,
         case AUDIO_SRC_PWM: return pwm_pass(pins, ch, abort_fn);
         case AUDIO_SRC_TS:  return ts_pass(pins, ch, abort_fn);
         case AUDIO_SRC_PCM5122: return pcm_pass(pins, ch, abort_fn);
+        case AUDIO_SRC_TLV320:  return tlv_pass(pins, ch, abort_fn);
         default:            return false;
     }
 }
@@ -650,6 +672,18 @@ void audio_stop(const detect_result_t *d, audio_src_t s) {
             }
             if (pins->i2c_sda != PIN_NC && pins->i2c_scl != PIN_NC)
                 pcm5122_quiet((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl);
+            break;
+        case AUDIO_SRC_TLV320:
+            /* Clocks down first, then the codec, for the same reason
+             * the PCM5122 case below spells out: a driver left live
+             * with no bit clock holds the last sample's level, and that
+             * is the click. */
+            if (s_i2s_up) {
+                pio_sm_set_enabled(s_pio, s_sm, false);
+                pio_sm_clear_fifos(s_pio, s_sm);
+            }
+            if (pins->i2c_sda != PIN_NC && pins->i2c_scl != PIN_NC)
+                tlv320_quiet((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl);
             break;
         case AUDIO_SRC_TS:
             if (ay_claim(pins)) {

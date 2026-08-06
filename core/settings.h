@@ -12,10 +12,11 @@
  * Two things need to survive a power cycle, and for the same reason:
  * neither can be worked out reliably from the hardware.
  *
- *   board    core2 and core2u share a pin map. Autodetect narrows to the
- *            pair and stops; whichever the operator confirms is stored
- *            here so the question is asked once per board rather than
- *            once per boot.
+ *   board    kept for the case where autodetect cannot decide. There is
+ *            no such case in the fleet today - core2 and core2u were the
+ *            permanent one and are now a single descriptor - but a board
+ *            the operator has to name is a thing this record exists to
+ *            remember, and the field costs two bytes.
  *
  *   video    composite drives the same eight GPIOs as HDMI and VGA and
  *            presents the same 75R-to-ground signature as VGA, so it can
@@ -40,7 +41,7 @@
  * so a version 1 record naming a board is naming a different board now.
  * settings_load() rejects anything that is not exactly this, which costs
  * a stored identity once and is better than a confident wrong answer. */
-#define FRANKID_VERSION  2u
+#define FRANKID_VERSION  3u
 
 typedef struct {
     uint32_t magic;

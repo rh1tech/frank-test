@@ -270,6 +270,7 @@ void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
             [AUDIO_SRC_I2S] = ATTEST_AUDIO_I2S,
             [AUDIO_SRC_TS]  = ATTEST_AUDIO_TS,
             [AUDIO_SRC_PCM5122] = ATTEST_AUDIO_PCM5122,
+            [AUDIO_SRC_TLV320]  = ATTEST_AUDIO_TLV320,
         };
         attest_set(subj[src], s_answer);
     }

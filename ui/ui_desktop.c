@@ -94,6 +94,7 @@ static ui_menu_item_t audio_items[] = {
     { "TDA (I2S)",           '2', false, false, CMD_AUDIO_I2S },
     { "TurboSound",          'U', false, false, CMD_AUDIO_TS },
     { "PCM5122",             'M', false, false, CMD_AUDIO_PCM5122 },
+    { "TLV320 codec",        'X', false, false, CMD_AUDIO_TLV320 },
 };
 
 static ui_menu_item_t tests_items[] = {
@@ -120,7 +121,7 @@ static const ui_menu_t menus[] = {
     { "File",    file_items,   7, false, 'F' },
     { "Board",   board_items,  2, false, 'B' },
     { "Video",   video_items,  7, false, 'V' },
-    { "Audio",   audio_items,  4, false, 'U' },
+    { "Audio",   audio_items,  5, false, 'U' },
     { "Tests",   tests_items,  9, false, 'T' },
 };
 

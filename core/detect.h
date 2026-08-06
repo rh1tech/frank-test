@@ -11,7 +11,7 @@
  *
  * Four tiers, most authoritative first. Every tier records what it
  * concluded, and the report prints all of them, because a disagreement
- * between "the binary says core2u" and "the pins say core2" is a fact
+ * between "the binary says one board" and "the pins say another" is a fact
  * worth surfacing — it means either a wrong flash or a hardware fault,
  * and silently resolving it in favour of either one loses the signal.
  */
@@ -76,9 +76,14 @@ typedef struct {
     unsigned  mismatch_count;
 
     /* True when two or more descriptors scored identically and nothing
-     * else separates them. core2 vs core2u is the permanent case: the
-     * boards share a pin map, and the only difference visible from the
-     * master is a bare pad versus a CMOS input on GP45. */
+     * else separates them.
+     *
+     * core2 vs core2u used to be the standing example and is gone: the
+     * two are one descriptor now, because the only difference visible
+     * from the master was a bare pad versus a CMOS input on GP45 and
+     * nothing here can measure 5 pF. The flag stays because a future
+     * pair could tie the same way, and a tie the firmware hides is
+     * worse than one it admits to. */
     bool ambiguous;
 
     /* ---- Verdict ---- */

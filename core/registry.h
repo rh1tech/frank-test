@@ -92,8 +92,9 @@ void registry_prepare(registry_results_t *r, const detect_result_t *d);
 
 /* Capabilities the probes actually demonstrated, whatever the descriptor
  * claims. Evidence outranks the table: a PSRAM that answered is present
- * even when the board could not be named, which is exactly the case on
- * an ambiguous core2/core2u. */
+ * even when the board could not be named at all, which is the case that
+ * matters - a board the fingerprint could not place still has parts on
+ * it that answered. */
 frank_caps_t registry_detected_caps(const detect_result_t *d);
 
 /* Run test `i`, updating its row. Split from a run-everything loop so
