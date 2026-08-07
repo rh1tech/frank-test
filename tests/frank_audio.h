@@ -35,14 +35,34 @@ typedef enum {
     AUDIO_SRC_I2S,
     AUDIO_SRC_TS,
     AUDIO_SRC_PCM5122,
-    AUDIO_SRC_TLV320,
+    /* frank_next's codec has two outputs with separate power bits, and
+     * they are separate sources here for the same reason they are
+     * brought up one at a time in the driver: the operator is being
+     * asked what they heard, and one question about two outputs is how
+     * a working headphone jack gets recorded as a working speaker. */
+    AUDIO_SRC_TLV320_HP,
+    AUDIO_SRC_TLV320_SPK,
     AUDIO_SRC_COUNT
 } audio_src_t;
 
+/* Left, right, centre — the most any source has. */
 #define AUDIO_CHANNELS 3
 
 const char *audio_src_name(audio_src_t s);
-const char *audio_channel_name(int ch);
+
+/* How many passes this source makes, 1 to AUDIO_CHANNELS.
+ *
+ * Three for anything stereo. One for the codec's Class-D amp, which is
+ * mono and fed from the left output mixer alone: a right-channel pass on
+ * it is silence by construction, and asking someone to listen to a
+ * channel the hardware was never going to reproduce is how "Silent" gets
+ * pressed about a speaker that works. */
+int audio_src_passes(audio_src_t s);
+
+/* What to call pass `ch` of this source, on screen and in the log. Takes
+ * the source because "Left" is the wrong name for the only pass a mono
+ * output makes. */
+const char *audio_channel_name(audio_src_t s, int ch);
 
 /* The capability a board must declare for this source to be reachable. */
 uint32_t audio_src_cap(audio_src_t s);
@@ -52,13 +72,23 @@ uint32_t audio_src_cap(audio_src_t s);
  * come from the descriptor, so driving them without one is guesswork. */
 bool audio_src_available(const detect_result_t *d, audio_src_t s);
 
-/* The switch positions this source needs, or NULL on a board whose audio
- * path has no switches. Naming them is not politeness: on megafrank the
- * mux is a 4:1 selector with no firmware access at all, so the wrong two
- * switches make a working DAC completely silent. */
-const char *audio_src_switch_hint(const detect_result_t *d, audio_src_t s);
+/* The one thing the operator has to know about this source before they
+ * listen to it, or NULL when there is nothing to say.
+ *
+ * Two things qualify so far. On megafrank the audio mux is a 4:1
+ * selector with no firmware access at all, so the wrong two switches
+ * make a working DAC completely silent and the switch positions have to
+ * be named. On the codec's speaker it is that the amp is mono, because
+ * an operator who was expecting stereo and got one channel needs to know
+ * which of those two facts they are looking at.
+ *
+ * Boards and sources with neither get NULL: inventing switches they do
+ * not have is worse than saying nothing at all. */
+const char *audio_src_hint(const detect_result_t *d, audio_src_t s);
 
-/* Play the melody once through `ch` (0 left, 1 right, 2 centre).
+/* Play the melody once through pass `ch` — 0 left, 1 right, 2 centre on
+ * a stereo source, and 0 the only pass a mono one makes. Must be less
+ * than audio_src_passes(s).
  *
  * `abort_fn`, if given, is called roughly every 10 ms *during* each note,
  * not merely between them; returning true stops the pass early. Between

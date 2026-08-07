@@ -94,7 +94,12 @@ static ui_menu_item_t audio_items[] = {
     { "TDA (I2S)",           '2', false, false, CMD_AUDIO_I2S },
     { "TurboSound",          'U', false, false, CMD_AUDIO_TS },
     { "PCM5122",             'M', false, false, CMD_AUDIO_PCM5122 },
-    { "TLV320 codec",        'X', false, false, CMD_AUDIO_TLV320 },
+    /* The codec's two outputs, listened to one at a time. W has nothing
+     * to do with "speaker": every letter of the word is already spoken
+     * for somewhere in the menus, and bare letters are resolved across
+     * all of them. */
+    { "TLV320 headphones",   'X', false, false, CMD_AUDIO_TLV320_HP },
+    { "TLV320 speaker",      'W', false, false, CMD_AUDIO_TLV320_SPK },
 };
 
 static ui_menu_item_t tests_items[] = {
@@ -115,14 +120,22 @@ static ui_menu_item_t tests_items[] = {
 
 /* The counts here are the length of each item array and nothing else.
  * Getting one wrong silently truncates a menu - the PCM5122 item existed,
- * was enabled, and simply did not appear, because this said three. */
+ * was enabled, and simply did not appear, because this said three.
+ *
+ * So they are counted rather than written down. They were literals until
+ * the codec's speaker became a second Audio item and this said five
+ * again, which is the same bug arriving by the same route: the array and
+ * the number are edited in two places and only one of them is where you
+ * are looking. */
+#define N_ITEMS(a) ((int)(sizeof(a) / sizeof((a)[0])))
+
 static const ui_menu_t menus[] = {
-    { "",        mark_items,   5, true,  'A' },
-    { "File",    file_items,   7, false, 'F' },
-    { "Board",   board_items,  2, false, 'B' },
-    { "Video",   video_items,  7, false, 'V' },
-    { "Audio",   audio_items,  5, false, 'U' },
-    { "Tests",   tests_items,  9, false, 'T' },
+    { "",        mark_items,   N_ITEMS(mark_items),  true,  'A' },
+    { "File",    file_items,   N_ITEMS(file_items),  false, 'F' },
+    { "Board",   board_items,  N_ITEMS(board_items), false, 'B' },
+    { "Video",   video_items,  N_ITEMS(video_items), false, 'V' },
+    { "Audio",   audio_items,  N_ITEMS(audio_items), false, 'U' },
+    { "Tests",   tests_items,  N_ITEMS(tests_items), false, 'T' },
 };
 
 static const ui_menubar_t default_bar = {

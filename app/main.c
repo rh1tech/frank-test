@@ -284,7 +284,8 @@ static void gate_menus(void) {
         { AUDIO_SRC_I2S, CMD_AUDIO_I2S },
         { AUDIO_SRC_TS,  CMD_AUDIO_TS  },
         { AUDIO_SRC_PCM5122, CMD_AUDIO_PCM5122 },
-        { AUDIO_SRC_TLV320,  CMD_AUDIO_TLV320  },
+        { AUDIO_SRC_TLV320_HP,  CMD_AUDIO_TLV320_HP  },
+        { AUDIO_SRC_TLV320_SPK, CMD_AUDIO_TLV320_SPK },
     };
     for (unsigned i = 0; i < count_of(audio_cmds); i++)
         ui_desktop_set_cmd_enabled(audio_cmds[i].cmd,
@@ -779,7 +780,8 @@ static void do_command(int cmd) {
         }
 
         case CMD_AUDIO_PWM: case CMD_AUDIO_I2S: case CMD_AUDIO_TS:
-        case CMD_AUDIO_PCM5122: case CMD_AUDIO_TLV320: {
+        case CMD_AUDIO_PCM5122:
+        case CMD_AUDIO_TLV320_HP: case CMD_AUDIO_TLV320_SPK: {
             /* The one audio path whose hardware is optional. The board
              * declares that it can take the hat, not that one is fitted,
              * so the menu item is always live - and without this the
@@ -805,7 +807,8 @@ static void do_command(int cmd) {
             dlg_audio(&ctx, cmd == CMD_AUDIO_PWM ? AUDIO_SRC_PWM
                           : cmd == CMD_AUDIO_I2S ? AUDIO_SRC_I2S
                           : cmd == CMD_AUDIO_TS  ? AUDIO_SRC_TS
-                          : cmd == CMD_AUDIO_TLV320 ? AUDIO_SRC_TLV320
+                          : cmd == CMD_AUDIO_TLV320_HP  ? AUDIO_SRC_TLV320_HP
+                          : cmd == CMD_AUDIO_TLV320_SPK ? AUDIO_SRC_TLV320_SPK
                                                  : AUDIO_SRC_PCM5122);
             redraw();
             break;

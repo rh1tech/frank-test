@@ -351,9 +351,10 @@ business making. These are dialogs you drive yourself.
 
 ![Audio](screenshots/audio.png)
 
-PWM, TDA (I²S), TurboSound and PCM5122. Each loops a short melody through left,
-right and centre, naming the channel while it plays. One steady tone cannot tell a working
-stereo path from a stuck LRCK. They all sound like success.
+PWM, TDA (I²S), TurboSound, PCM5122 and the TLV320's two outputs. Each loops a
+short melody through left, right and centre, naming the channel while it plays.
+One steady tone cannot tell a working stereo path from a stuck LRCK. They all
+sound like success.
 
 *I hear it* and *Silent* record what you decide, and the answer goes into the
 saved report. Leaving with `Esc` records nothing, because closing a dialog is not
@@ -367,6 +368,21 @@ I²S to its own pins — data GP21, BCK GP18, LRCK GP19 — and needs its DAC
 configured over I²C first: it wires no master clock, so the PLL has to be
 referenced to the bit clock and the missing-SCK error ignored. Miss either and
 the part acknowledges every write and stays silent.
+
+**TLV320** is FRANK Next's codec, and the only one here with two outputs worth
+asking about separately: a stereo headphone pair and a mono Class-D speaker amp,
+separate blocks with separate power bits and separate ways of being dead. They
+are two menu entries, brought up one at a time and recorded as two verdicts,
+because one question asked about two outputs is how a working headphone jack
+gets written down as a working speaker. The speaker makes one pass rather than
+three — its amp is fed from the left output mixer alone, so a right-channel pass
+on it would be silence by construction, and asking someone to listen for a
+channel the hardware cannot reproduce is how *Silent* gets pressed about a
+speaker that works. Neither output makes a sound until it has been configured
+over I²C, and the register sequence for both comes from the datasheet rather
+than from a firmware that has been heard to work; a codec with the wrong PLL
+settings acknowledges every byte and stays perfectly silent, so the operator's
+answer is the result and the acknowledgement is not.
 
 **TurboSound is silenced during start-up**, before anything else claims the pins.
 An AY comes out of reset with its registers undefined, and nothing on these

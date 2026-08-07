@@ -62,7 +62,7 @@ static const char *const lines[] = {
     "",
     "Audio    P PWM           2 TDA (I2S)",
     "         U TurboSound    M PCM5122",
-    "         X TLV320 codec",
+    "         X TLV320 phones W TLV320 spkr",
     "",
     "Video    H HDMI          V VGA",
     "         C composite     T test card",

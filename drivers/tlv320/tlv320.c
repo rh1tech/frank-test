@@ -72,12 +72,15 @@
 /* Page 1 — the analogue side: routing, volume, drivers. Addresses and
  * every value below are from SLAS671C tables 6-99 to 6-109. */
 #define P1_HP_DRIVERS       0x1F
+#define P1_SPK_AMP          0x20
 #define P1_HP_POP           0x21
 #define P1_OUT_MIXER_ROUTE  0x23
 #define P1_HPL_ANALOG_VOL   0x24
 #define P1_HPR_ANALOG_VOL   0x25
+#define P1_SPK_ANALOG_VOL   0x26
 #define P1_HPL_DRIVER       0x28
 #define P1_HPR_DRIVER       0x29
+#define P1_SPK_DRIVER       0x2A
 
 static bool wr(unsigned sda, unsigned scl, uint8_t reg, uint8_t val) {
     const uint8_t buf[2] = { reg, val };
@@ -95,7 +98,7 @@ bool tlv320_detect(unsigned sda, unsigned scl) {
     return found;
 }
 
-bool tlv320_init(unsigned sda, unsigned scl) {
+bool tlv320_init(unsigned sda, unsigned scl, tlv320_out_t out) {
     i2c_bb_init(sda, scl);
 
     bool ok = page(sda, scl, 0);
@@ -136,37 +139,70 @@ bool tlv320_init(unsigned sda, unsigned scl) {
     /* ---- analogue ---- */
     ok = ok && page(sda, scl, 1);
 
-    /* De-pop before power, because it governs the power-on ramp that
-     * the next write starts.
+    /* Each DAC into its own channel mixer: D7-D6 = 01, D3-D2 = 01.
      *
-     * D7=1 powers the DAC down only after the amplifiers, D6-D3=0011 is
-     * a 1.53 ms driver power-on and D2-D1=11 a 3.9 ms ramp step. The
-     * reset value asks for 304 ms, which would swallow the first third
-     * of a one-second melody and read as a dead channel. */
-    ok = ok && wr(sda, scl, P1_HP_POP, 0x9E);
-
-    /* HPL and HPR powered, common mode 1.35 V. D2 is reserved and must
-     * be written as 1 — leaving it clear is the difference between a
-     * driver that comes up and one that acknowledges and does not. */
-    ok = ok && wr(sda, scl, P1_HP_DRIVERS, 0xC4);
-    sleep_ms(5);
-
-    /* The signal path, in order: each DAC into its channel mixer
-     * (D7-D6 = 01, D3-D2 = 01), each mixer through the analogue volume
-     * control and on to its headphone driver (D7 = 1, gain 0 = 0 dB).
-     *
-     * The alternative is routing each DAC straight at its driver
-     * (D7-D6 = 10), which works and skips the analogue volume entirely
-     * — so the two volume writes below would then be doing nothing. */
+     * Written for both outputs and before either of them is powered,
+     * because it is the one part of the analogue path they share. The
+     * Class-D amp's input is the left mixer's output, not the left DAC,
+     * so the alternative arrangement — routing each DAC straight at its
+     * headphone driver, D7-D6 = 10 — would leave the speaker with
+     * nothing to amplify and the analogue volume controls below doing
+     * nothing at all. */
     ok = ok && wr(sda, scl, P1_OUT_MIXER_ROUTE, 0x44);
-    ok = ok && wr(sda, scl, P1_HPL_ANALOG_VOL, 0x80);
-    ok = ok && wr(sda, scl, P1_HPR_ANALOG_VOL, 0x80);
 
-    /* Drivers at 0 dB and unmuted. D2 unmutes, D1 is reserved and
-     * written as 1; a zero here is a driver that is powered, routed and
-     * silent, which is the most convincing way to fail. */
-    ok = ok && wr(sda, scl, P1_HPL_DRIVER, 0x06);
-    ok = ok && wr(sda, scl, P1_HPR_DRIVER, 0x06);
+    if (out == TLV320_OUT_HP) {
+        /* De-pop before power, because it governs the power-on ramp that
+         * the next write starts.
+         *
+         * D7=1 powers the DAC down only after the amplifiers, D6-D3=0011
+         * is a 1.53 ms driver power-on and D2-D1=11 a 3.9 ms ramp step.
+         * The reset value asks for 304 ms, which would swallow the first
+         * third of a one-second melody and read as a dead channel. */
+        ok = ok && wr(sda, scl, P1_HP_POP, 0x9E);
+
+        /* HPL and HPR powered, common mode 1.35 V. D2 is reserved and
+         * must be written as 1 — leaving it clear is the difference
+         * between a driver that comes up and one that acknowledges and
+         * does not. */
+        ok = ok && wr(sda, scl, P1_HP_DRIVERS, 0xC4);
+        sleep_ms(5);
+
+        /* Each mixer through the analogue volume control and on to its
+         * headphone driver: D7 = 1 routes it, gain 0 = 0 dB. */
+        ok = ok && wr(sda, scl, P1_HPL_ANALOG_VOL, 0x80);
+        ok = ok && wr(sda, scl, P1_HPR_ANALOG_VOL, 0x80);
+
+        /* Drivers at 0 dB and unmuted. D2 unmutes, D1 is reserved and
+         * written as 1; a zero here is a driver that is powered, routed
+         * and silent, which is the most convincing way to fail. */
+        ok = ok && wr(sda, scl, P1_HPL_DRIVER, 0x06);
+        ok = ok && wr(sda, scl, P1_HPR_DRIVER, 0x06);
+    } else {
+        /* The left mixer through the analogue volume control and on to
+         * the Class-D input: D7 = 1 routes it, gain 0 = 0 dB. Same
+         * register shape as HPL's, one register along.
+         *
+         * There is no right-hand equivalent to write. The part is a
+         * DAC3100, the amp is mono, and SPR does not exist on it. */
+        ok = ok && wr(sda, scl, P1_SPK_ANALOG_VOL, 0x80);
+
+        /* D7 powers the Class-D up. This is the write the driver went
+         * without for a version, and its absence is a codec that
+         * acknowledges every byte, drives the headphone jack perfectly
+         * and leaves the speaker terminals at rest. */
+        ok = ok && wr(sda, scl, P1_SPK_AMP, 0x80);
+        sleep_ms(5);
+
+        /* Gain and unmute. D4-D3 = 00 is 6 dB, the lowest the amp
+         * offers — its four settings are 6, 12, 18 and 24 dB, so unlike
+         * the headphone drivers there is no unity setting to ask for.
+         * D2 unmutes.
+         *
+         * The louder settings are deliberately not used: this plays a
+         * square wave into whatever small speaker is fitted, and the
+         * question being asked is "can you hear it", not "how loud". */
+        ok = ok && wr(sda, scl, P1_SPK_DRIVER, 0x04);
+    }
 
     /* ---- digital, last ---- */
     ok = ok && page(sda, scl, 0);
@@ -194,10 +230,17 @@ bool tlv320_quiet(unsigned sda, unsigned scl) {
     ok = ok && wr(sda, scl, P0_DAC_MUTE, 0x0C);         /* mute L and R  */
     ok = ok && wr(sda, scl, P0_DAC_DATA_PATH, 0x00);    /* DACs off      */
 
+    /* Both outputs, whichever one was brought up. Muting a block that
+     * was never powered is four wasted bytes on a bus that is about to
+     * go idle anyway, and it saves this from having to be told which
+     * output the pass used — a thing it would eventually be told
+     * wrongly. */
     ok = ok && page(sda, scl, 1);
     ok = ok && wr(sda, scl, P1_HPL_DRIVER, 0x02);       /* mute, keep D1 */
     ok = ok && wr(sda, scl, P1_HPR_DRIVER, 0x02);
+    ok = ok && wr(sda, scl, P1_SPK_DRIVER, 0x00);       /* mute          */
     ok = ok && wr(sda, scl, P1_HP_DRIVERS, 0x04);       /* drivers off   */
+    ok = ok && wr(sda, scl, P1_SPK_AMP,    0x00);       /* Class-D off   */
 
     i2c_bb_release(sda, scl);
     return ok;

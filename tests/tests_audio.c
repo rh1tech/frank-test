@@ -91,7 +91,18 @@ static const struct { const char *label; bool left, right; } channels[] = {
     { "Centre", true,  true  },
 };
 
-const char *audio_channel_name(int ch) {
+/* One pass, not three, for the codec's Class-D amp — see frank_audio.h.
+ * Everything else in the fleet is stereo from the pin outwards. */
+int audio_src_passes(audio_src_t s) {
+    return s == AUDIO_SRC_TLV320_SPK ? 1 : AUDIO_CHANNELS;
+}
+
+const char *audio_channel_name(audio_src_t s, int ch) {
+    /* "Left" would be true of the mono pass — the Class-D amp does take
+     * the left mixer — and it would still be the wrong thing to put on
+     * screen in the largest type the interface has, because the operator
+     * reading it goes looking for the right one. */
+    if (audio_src_passes(s) == 1) return "Mono";
     if (ch < 0 || ch >= AUDIO_CHANNELS) return "?";
     return channels[ch].label;
 }
@@ -102,7 +113,8 @@ const char *audio_src_name(audio_src_t s) {
         case AUDIO_SRC_I2S: return "TDA (I2S)";
         case AUDIO_SRC_TS:  return "TurboSound";
         case AUDIO_SRC_PCM5122: return "PCM5122";
-        case AUDIO_SRC_TLV320:  return "TLV320 codec";
+        case AUDIO_SRC_TLV320_HP:  return "TLV320 phones";
+        case AUDIO_SRC_TLV320_SPK: return "TLV320 speaker";
         default:            return "?";
     }
 }
@@ -113,7 +125,10 @@ uint32_t audio_src_cap(audio_src_t s) {
         case AUDIO_SRC_I2S: return CAP_AUDIO_I2S;
         case AUDIO_SRC_TS:  return CAP_TURBOSOUND;
         case AUDIO_SRC_PCM5122: return CAP_AUDIO_PCM5122;
-        case AUDIO_SRC_TLV320:  return CAP_AUDIO_CODEC_I2C;
+        /* Both outputs live behind the one capability: the codec is
+         * soldered down, so a board that has it has both. */
+        case AUDIO_SRC_TLV320_HP:
+        case AUDIO_SRC_TLV320_SPK: return CAP_AUDIO_CODEC_I2C;
         default:            return 0;
     }
 }
@@ -130,8 +145,16 @@ bool audio_src_available(const detect_result_t *d, audio_src_t s) {
  * exactly like a dead amplifier. Any board that has the mux gets told
  * which way to set it; boards whose audio is hard-wired get nothing,
  * because inventing switches they do not have is worse than saying
- * nothing at all. */
-const char *audio_src_switch_hint(const detect_result_t *d, audio_src_t s) {
+ * nothing at all.
+ *
+ * The speaker's line is here rather than in the dialog because it is the
+ * same kind of fact as the mux positions: something about the routing
+ * that decides what the operator is about to hear, and that they cannot
+ * see from the front of the board. */
+const char *audio_src_hint(const detect_result_t *d, audio_src_t s) {
+    if (s == AUDIO_SRC_TLV320_SPK)
+        return "Mono: the Class-D amp takes the left channel";
+
     if (!d || !d->board || !(d->board->caps & CAP_AUDIO_MUX)) return NULL;
     switch (s) {
         case AUDIO_SRC_PWM: return "Audio mux: S1-1 off, S1-2 off";
@@ -329,10 +352,17 @@ static bool i2s_pass_on(int data_pin, int clk_pin, int ch,
  * every write acknowledged, that ordering is the first thing to try
  * inverting - see tlv320.h.
  *
- * Unlike the hat, this codec is on the board's own I2S pins. */
-static bool tlv_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
+ * Unlike the hat, this codec is on the board's own I2S pins.
+ *
+ * `out` picks which of the codec's two output blocks is powered for this
+ * pass, and the other stays down — see tlv320.h. Re-running the whole
+ * init on every pass is what makes switching between them from the menu
+ * work at all: the sequence opens with a software reset, so the block
+ * that was live is off before the new one comes up. */
+static bool tlv_pass(const frank_pins_t *pins, tlv320_out_t out, int ch,
+                     bool (*abort_fn)(void)) {
     if (pins->i2c_sda == PIN_NC || pins->i2c_scl == PIN_NC) return false;
-    if (!tlv320_init((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl))
+    if (!tlv320_init((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl, out))
         return false;
 
     return i2s_pass_on(pins->i2s_data, pins->i2s_clk_base, ch, abort_fn);
@@ -607,7 +637,7 @@ static bool ts_pass(const frank_pins_t *pins, int c, bool (*abort_fn)(void)) {
 bool audio_play(const detect_result_t *d, audio_src_t s, int ch,
                 bool (*abort_fn)(void)) {
     if (!audio_src_available(d, s)) return false;
-    if (ch < 0 || ch >= AUDIO_CHANNELS) return false;
+    if (ch < 0 || ch >= audio_src_passes(s)) return false;
 
     const frank_pins_t *pins = &d->board->pins;
     switch (s) {
@@ -616,7 +646,10 @@ bool audio_play(const detect_result_t *d, audio_src_t s, int ch,
         case AUDIO_SRC_PWM: return pwm_pass(pins, ch, abort_fn);
         case AUDIO_SRC_TS:  return ts_pass(pins, ch, abort_fn);
         case AUDIO_SRC_PCM5122: return pcm_pass(pins, ch, abort_fn);
-        case AUDIO_SRC_TLV320:  return tlv_pass(pins, ch, abort_fn);
+        case AUDIO_SRC_TLV320_HP:
+            return tlv_pass(pins, TLV320_OUT_HP, ch, abort_fn);
+        case AUDIO_SRC_TLV320_SPK:
+            return tlv_pass(pins, TLV320_OUT_SPK, ch, abort_fn);
         default:            return false;
     }
 }
@@ -673,11 +706,13 @@ void audio_stop(const detect_result_t *d, audio_src_t s) {
             if (pins->i2c_sda != PIN_NC && pins->i2c_scl != PIN_NC)
                 pcm5122_quiet((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl);
             break;
-        case AUDIO_SRC_TLV320:
+        case AUDIO_SRC_TLV320_HP:
+        case AUDIO_SRC_TLV320_SPK:
             /* Clocks down first, then the codec, for the same reason
              * the PCM5122 case below spells out: a driver left live
              * with no bit clock holds the last sample's level, and that
-             * is the click. */
+             * is the click. tlv320_quiet() takes both output blocks
+             * down, so the two sources share this. */
             if (s_i2s_up) {
                 pio_sm_set_enabled(s_pio, s_sm, false);
                 pio_sm_clear_fifos(s_pio, s_sm);

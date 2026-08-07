@@ -9,7 +9,7 @@
 /*
  * dlg_audio.c — play it until someone has heard it.
  *
- * The three sound paths cannot be tested, only listened to (see
+ * The sound paths cannot be tested, only listened to (see
  * frank_audio.h), and on a board with a 4:1 audio mux the operator has to
  * move two switches and listen again. So this loops: left, right, centre,
  * left, ... naming the channel as it goes, until Esc or Stop.
@@ -18,6 +18,12 @@
  * succession leave the listener working out which one they just heard,
  * and "the right speaker was silent" is only a finding if you knew which
  * pass was the right one.
+ *
+ * How many passes there are is the source's business, not this file's. A
+ * mono output loops one pass called Mono rather than three called Left,
+ * Right and Centre, two of which it could not reproduce — see
+ * audio_src_passes(). Everything here that used to count to three now
+ * asks.
  */
 
 #include "dlgs.h"
@@ -110,12 +116,13 @@ static const char *s_tp_lines[3];
 
 static void publish_textpage(const dlg_ctx_t *c, audio_src_t src, int ch,
                              unsigned laps) {
-    const char *hint = audio_src_switch_hint(c->detect, src);
+    const char *hint = audio_src_hint(c->detect, src);
 
     snprintf(s_tp_title, sizeof(s_tp_title), "Audio - %s",
              audio_src_name(src));
-    snprintf(s_tp_line[0], sizeof(s_tp_line[0]), "Playing: %s channel",
-             audio_channel_name(ch));
+    snprintf(s_tp_line[0], sizeof(s_tp_line[0]),
+             audio_src_passes(src) > 1 ? "Playing: %s channel" : "Playing: %s",
+             audio_channel_name(src, ch));
     snprintf(s_tp_line[1], sizeof(s_tp_line[1]), "Passes: %u", laps);
 
     int n = 2;
@@ -134,7 +141,8 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
     publish_textpage(c, src, ch, laps);
     c->paint_background();
 
-    const char *hint = audio_src_switch_hint(c->detect, src);
+    const char *hint   = audio_src_hint(c->detect, src);
+    const int   passes = audio_src_passes(src);
 
     /* One line of body per thing worth saying, and no fixed height: an
      * empty band under a two-line message reads as a layout mistake
@@ -169,19 +177,22 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
      * one fact the operator needs at the moment the sound arrives. */
     {
         char line[32];
-        snprintf(line, sizeof(line), "%s channel", audio_channel_name(ch));
+        snprintf(line, sizeof(line), passes > 1 ? "%s channel" : "%s",
+                 audio_channel_name(src, ch));
         ui_text_big(s, cx + 28, cy + 16, line, UI_BLACK);
     }
 
-    /* Three plates, the live one lit: the name says which channel, and
-     * these say where in the cycle it is — so a pass that never advances
-     * is visible rather than merely inaudible. */
-    for (int i = 0; i < AUDIO_CHANNELS; i++) {
+    /* A plate per pass, the live one lit: the name says which channel,
+     * and these say where in the cycle it is — so a pass that never
+     * advances is visible rather than merely inaudible. A mono source
+     * gets the one plate, which says on its face that there is no second
+     * channel coming rather than leaving someone waiting for it. */
+    for (int i = 0; i < passes; i++) {
         const int px = cx + 28 + i * 92;
         const int py = cy + 42;
         const bool live = (i == ch);
         ui_plate(s, px, py, 84, 16, live ? UI_ACCENT : UI_GREY_1);
-        ui_text_centred(s, px, py + 4, 84, audio_channel_name(i),
+        ui_text_centred(s, px, py + 4, 84, audio_channel_name(src, i),
                         live ? UI_WHITE : UI_GREY_5);
     }
 
@@ -231,7 +242,10 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
 void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
     if (!audio_src_available(c->detect, src)) return;
 
-    printf("[audio] %s: looping L/R/C\n", audio_src_name(src));
+    const int passes = audio_src_passes(src);
+
+    printf("[audio] %s: looping %s\n", audio_src_name(src),
+           passes > 1 ? "L/R/C" : "mono");
 
     s_abort  = false;
     s_answer = ATTEST_UNKNOWN;
@@ -251,11 +265,11 @@ void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
              * path can detect one, so this is rare and specific rather
              * than a general failure route. */
             printf("[audio] %s stalled on the %s channel\n",
-                   audio_src_name(src), audio_channel_name(ch));
+                   audio_src_name(src), audio_channel_name(src, ch));
             break;
         }
 
-        if (++ch >= AUDIO_CHANNELS) { ch = 0; laps++; }
+        if (++ch >= passes) { ch = 0; laps++; }
     }
 
     audio_stop(c->detect, src);
@@ -270,13 +284,14 @@ void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
             [AUDIO_SRC_I2S] = ATTEST_AUDIO_I2S,
             [AUDIO_SRC_TS]  = ATTEST_AUDIO_TS,
             [AUDIO_SRC_PCM5122] = ATTEST_AUDIO_PCM5122,
-            [AUDIO_SRC_TLV320]  = ATTEST_AUDIO_TLV320,
+            [AUDIO_SRC_TLV320_HP]  = ATTEST_AUDIO_TLV320_HP,
+            [AUDIO_SRC_TLV320_SPK] = ATTEST_AUDIO_TLV320_SPK,
         };
         attest_set(subj[src], s_answer);
     }
 
     printf("[audio] %s: stopped after %u pass(es), operator said %s\n",
-           audio_src_name(src), laps * AUDIO_CHANNELS + (unsigned)ch,
+           audio_src_name(src), laps * (unsigned)passes + (unsigned)ch,
            s_answer == ATTEST_YES ? "heard it"
                                   : (s_answer == ATTEST_NO ? "silent" : "nothing"));
 }

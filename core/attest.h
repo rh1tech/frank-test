@@ -34,7 +34,12 @@ typedef enum {
     ATTEST_AUDIO_I2S,
     ATTEST_AUDIO_TS,
     ATTEST_AUDIO_PCM5122,
-    ATTEST_AUDIO_TLV320,
+    /* The codec's two outputs are two subjects. They are separate
+     * blocks with separate power bits and separate ways of being dead,
+     * and one verdict covering both would be a claim about whichever
+     * one the operator did not listen to. */
+    ATTEST_AUDIO_TLV320_HP,
+    ATTEST_AUDIO_TLV320_SPK,
     ATTEST_SUBJECT_COUNT
 } attest_subject_t;
 
