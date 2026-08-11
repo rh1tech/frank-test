@@ -298,8 +298,27 @@ static bool i2s_tone(uint32_t hz, bool left, bool right, uint32_t ms,
         }
 
         int16_t v = ((i / half) & 1u) ? amp : (int16_t)-amp;
-        uint32_t w = ((uint32_t)(uint16_t)(left  ? v : 0) << 16)
-                   |  (uint32_t)(uint16_t)(right ? v : 0);
+
+        /* Right in the high half, left in the low half — and not the
+         * other way round, which is what this did and what made every
+         * pass come out of the wrong speaker.
+         *
+         * The header in audio_i2s.pio says bits 31:16 are "sample ws=0"
+         * and that is where the mistake came from. Trace the program
+         * instead. The first sixteen bits shifted out are the high half,
+         * and they leave during bitloop1, whose side-set holds WS high.
+         * WS falls on the sixteenth of them, and I2S puts the MSB of a
+         * word one bit clock *after* the WS edge that selects it — so
+         * the transition bit still belongs to the word that was ending
+         * and the left word is the sixteen bits after it. High half is
+         * WS=1, which is right; low half is left.
+         *
+         * pico-extras, which this program comes from, agrees the long
+         * way round: it DMAs interleaved int16 pairs with left at the
+         * lower address, and a little-endian 32-bit read of [L, R] puts
+         * R in the high half. */
+        uint32_t w = ((uint32_t)(uint16_t)(right ? v : 0) << 16)
+                   |  (uint32_t)(uint16_t)(left  ? v : 0);
 
         while (pio_sm_is_tx_fifo_full(s_pio, s_sm)) {
             if (absolute_time_diff_us(get_absolute_time(), deadline) < 0)
@@ -399,12 +418,19 @@ static bool quiet_wait(uint32_t ms, bool (*tick)(void)) {
 /* ------------------------------------------------------------------ */
 
 /* The same two pins as I2S, through RC filters, with the 74HC4052
- * choosing which analogue path reaches the amplifier. */
+ * choosing which analogue path reaches the amplifier.
+ *
+ * The clock pin is left and the data pin is right. Nothing in the pin
+ * names says so — these are the I2S pins wearing another hat, and which
+ * RC filter reaches which side of the mux is a board fact rather than a
+ * protocol one. It was assigned the obvious way round, data first, and
+ * that was wrong: heard on the bench with the passes coming out of the
+ * opposite speaker to the one named. */
 static bool pwm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
     if (pins->i2s_data == PIN_NC) return false;
 
-    const uint pin_l = (uint)pins->i2s_data;
-    const uint pin_r = (uint)pins->i2s_clk_base;
+    const uint pin_l = (uint)pins->i2s_clk_base;
+    const uint pin_r = (uint)pins->i2s_data;
 
     gpio_set_function(pin_l, GPIO_FUNC_PWM);
     gpio_set_function(pin_r, GPIO_FUNC_PWM);
@@ -463,10 +489,11 @@ static bool pwm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
     return true;
 }
 
+/* Both pins, so which one is which side does not arise here. */
 static void pwm_quiet(const frank_pins_t *pins) {
     if (pins->i2s_data == PIN_NC) return;
-    const uint pin_l = (uint)pins->i2s_data;
-    const uint pin_r = (uint)pins->i2s_clk_base;
+    const uint pin_l = (uint)pins->i2s_clk_base;
+    const uint pin_r = (uint)pins->i2s_data;
     pwm_set_gpio_level(pin_l, 0);
     pwm_set_gpio_level(pin_r, 0);
     pwm_set_enabled(pwm_gpio_to_slice_num(pin_l), false);
@@ -571,10 +598,16 @@ static void ay_write(const frank_pins_t *p, int chip, uint8_t reg, uint8_t val) 
 #define AY_CLOCK_HZ 1750000u
 #define AY_PERIOD(f) ((uint16_t)(AY_CLOCK_HZ / (16u * (f))))
 
-/* Channel A is the left output, C the right, B the centre — which is how
- * a TurboSound board is normally wired and, conveniently, gives the same
- * three passes the other two paths make. */
-static const uint8_t ay_chan_for[AUDIO_CHANNELS] = { 0, 2, 1 };
+/* Channel C is the left output, A the right, B the centre.
+ *
+ * ACB stereo, which is how a TurboSound board is normally wired, and the
+ * pairing was written down the way it is normally *said* — A left, C
+ * right — without anyone having listened to it. On the bench it is the
+ * other way round. B in the middle is not in doubt: it is the channel
+ * both sides get, so it sounds the same whichever way the outer two go,
+ * which is exactly why this went unnoticed until someone tried the
+ * outer two. */
+static const uint8_t ay_chan_for[AUDIO_CHANNELS] = { 2, 0, 1 };
 
 static bool ay_claim(const frank_pins_t *pins) {
     if (pins->ay_rclk == PIN_NC || pins->ay_srclk == PIN_NC ||
