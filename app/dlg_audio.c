@@ -225,7 +225,11 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
     ui_button(s, s_yes_x, s_stop_y, s_yes_w, s_stop_h, "I hear it", true, false, true);
     ui_button(s, s_no_x,  s_stop_y, s_no_w,  s_stop_h, "Silent",    true, false, true);
 
-    ui_text(s, cx, s_stop_y + 5, "Y / N, or Esc to leave it open", UI_GREY_5);
+    /* Short, because it shares the row with three buttons whose widths
+     * are measured from their labels and laid out from the right edge.
+     * The sentence it used to be ran under "I hear it" and the two drew
+     * over each other. */
+    ui_text(s, cx, s_stop_y + 5, "Y / N / Esc", UI_GREY_5);
 
     ui_video_present();
 
