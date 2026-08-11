@@ -554,7 +554,8 @@ static ui_test_state_t t_sd_speed(const detect_result_t *d, char *detail,
             spi_read_blocking(spi, 0xFF, &tok, 1);
         if (tok != 0xFE) { ok = false; break; }
 
-        spi_read_blocking(spi, 0xFF, buf, sizeof(buf));
+        /* 512 and not sizeof: `buf` is a pointer into the scratch pool. */
+        spi_read_blocking(spi, 0xFF, buf, 512);
         uint8_t crc[2];
         spi_read_blocking(spi, 0xFF, crc, sizeof(crc));
 
@@ -679,7 +680,7 @@ static ui_test_state_t t_sd_write(const detect_result_t *d, char *detail,
     /* A pattern that is not a constant: a stuck bus reads back the same
      * byte everywhere and would match a fill. The counter catches an
      * address line that is wrong as well as a data line. */
-    for (unsigned i = 0; i < sizeof(work); i++)
+    for (unsigned i = 0; i < 512u; i++)
         work[i] = (uint8_t)((i & 1u) ? (WRITE_PATTERN_A ^ (i >> 1))
                                      : (WRITE_PATTERN_B ^ (i >> 1)));
 
@@ -691,7 +692,7 @@ static ui_test_state_t t_sd_write(const detect_result_t *d, char *detail,
     if (ok) {
         if (sd_cmd(&sp, CMD17, arg, CRC_DUMMY) != 0 || !sd_rx_block(&sp, back, 512)) {
             ok = false; why = "wrote, but could not read back";
-        } else if (memcmp(work, back, sizeof(work)) != 0) {
+        } else if (memcmp(work, back, 512u) != 0) {
             ok = false; why = "read back different from written";
         }
     }
@@ -702,7 +703,7 @@ static ui_test_state_t t_sd_write(const detect_result_t *d, char *detail,
     if (sd_cmd(&sp, CMD24, arg, CRC_DUMMY) == 0 && sd_tx_block(&sp, orig, 512)) {
         if (sd_cmd(&sp, CMD17, arg, CRC_DUMMY) == 0 &&
             sd_rx_block(&sp, back, 512))
-            restored = (memcmp(orig, back, sizeof(orig)) == 0);
+            restored = (memcmp(orig, back, 512u) == 0);
     }
 
     sd_deselect(&sp);
