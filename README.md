@@ -60,8 +60,7 @@ page instead of a shrunken copy of the desktop.
 | microFRANK | RP2350A | |
 | zeroFRANK | RP2350A | |
 | OldSkoolFRANK | RP2350A | DB9 gamepads |
-| FRANK Core 2 | RP2350B + RP2350A | Inter-processor link |
-| FRANK Core 2U | RP2350B + RP2350A | As Core 2, plus tape and a USB hub |
+| FRANK Core 2 | RP2350B + RP2350A | Inter-processor link. One descriptor covers Core 2 and Core 2U; the U revision adds tape and a USB hub |
 | FRANK Next | RP2350B | TLV320 codec |
 | Waveshare RP2350-PiZero ("Z0pa") | RP2350B | HDMI on GP32-39, driven from the PIO; optional PCM5122 audio hat |
 
@@ -93,6 +92,7 @@ GPIO the package does not have.
 |---|---|
 | miniFRANK, microFRANK, zeroFRANK | `rp2350a` |
 | MegaFRANK, OldSkoolFRANK, FRANK Next | `rp2350b` |
+| Waveshare RP2350-PiZero ("Z0pa") | `rp2350b` — its HDMI is on GP32-39, which only the B package has |
 | FRANK PGA | `rp2350b` — a PGA2350 is always the B package |
 | FRANK | whichever module is in the socket: a Pico 2 is `rp2350a`, a Pico Plus 2 is `rp2350b` |
 | FRANK Core 2, Core 2U — master | `rp2350b` |
@@ -180,9 +180,11 @@ on some boards and not others.
 Scoring is a *ratio* of pins matched, not a count, so a board with seven
 signature pins cannot beat a board with six just by having more of them.
 
-**The operator.** Some boards really are indistinguishable. Core 2 and Core 2U
-share a pin map exactly. When two descriptors tie the firmware says so and asks,
-instead of picking one and being quietly wrong.
+**The operator.** When two descriptors tie the firmware says so and asks, instead
+of picking one and being quietly wrong. Two boards that test identically are not
+worth a question, though: Core 2 and Core 2U shared a pin map exactly and were
+asked about on every board of the type, so they are one descriptor now and the
+tie is gone.
 
 ![Set Board](screenshots/set-board.png)
 
@@ -634,13 +636,18 @@ banner and the About box from it, and `release.sh` writes it before building, so
 a binary cannot disagree with its own filename.
 
 ```sh
-./release.sh 1.00
+./release.sh 1.05
 ```
 
-That puts two files in `release/`:
+That puts three files in `release/`:
 
-- `frank-test_1_00_master.uf2`, the test firmware
-- `frank-test_1_00_slave.uf2`, the link peer for Core 2 and Core 2U
+- `frank-test_1_05_rp2350a.uf2`, the test firmware for the 30-GPIO package
+- `frank-test_1_05_rp2350b.uf2`, the same program for the 48-GPIO package
+- `frank-test_1_05_slave.uf2`, the link peer for Core 2 and Core 2U
+
+The first two are one program that works out which board it is on at run time,
+so the split is by silicon rather than by board — the table under
+[Which image](#which-image) says which package a board takes.
 
 ---
 
