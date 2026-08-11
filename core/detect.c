@@ -243,7 +243,24 @@ static bool tier1_consistent(const detect_result_t *r,
 
     bool wants_qmi_psram = (p->psram_cs != PIN_NC) && !(d->caps & CAP_PSRAM_SOFTSPI);
     if (wants_qmi_psram && r->psram_cs_found != p->psram_cs) return false;
-    if (!wants_qmi_psram && r->psram_cs_found != PIN_NC &&
+
+    /* PSRAM that answered, on a board that declares none, normally rules
+     * that board out — except on a socketed one, where the part may not
+     * be the board's at all.
+     *
+     * A Pimoroni Pico Plus 2 carries 8 MB on GP47, which is inside the
+     * module and never reaches the header. FRANK declares no PSRAM
+     * because its carrier has none, so a Plus 2 in the socket vetoed
+     * FRANK out of its own identification and left `core2` — RP2350B,
+     * QMI PSRAM on GP47, and the only RP2350B descriptor still standing
+     * once the rest had been vetoed on their own facts — to win by
+     * being the last one there. A FRANK reported itself as a Core 2.
+     *
+     * Same reasoning as `flash_bytes = 0` meaning "lives on the module":
+     * on a socketed board the module's memory is not a property of the
+     * board, and its presence is evidence about neither. This is what
+     * `pico_socket` was declared for, and until now nothing read it. */
+    if (!wants_qmi_psram && !d->pico_socket && r->psram_cs_found != PIN_NC &&
         !(d->caps & CAP_PSRAM_SOFTSPI)) return false;
 
     if ((bool)(d->caps & CAP_RTC_DS3231)     != r->i2c_ds3231)   return false;
