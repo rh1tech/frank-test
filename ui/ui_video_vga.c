@@ -115,6 +115,15 @@ static void __not_in_flash_func(vga_vsync)(void) {
 }
 
 static bool vga_init(void) {
+    /* Same gate as the HDMI backend next door, and for the same reason:
+     * the HSTX is hard-wired to GP12-19, so a board whose ladder is
+     * anywhere else must be left to the PIO backend. There was no gate
+     * here at all while every VGA board in the fleet was on GP12-19 —
+     * which stopped being true with xt8086, where those eight pins are
+     * an 8086's address bus and driving them is not a dark screen but a
+     * fight with a CPU. */
+    if (ui_video_pin_base() != 12) return false;
+
     build_lut();
 
     vga_output_init();

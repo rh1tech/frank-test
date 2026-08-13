@@ -59,10 +59,11 @@ page instead of a shrunken copy of the desktop.
 | miniFRANK | RP2350A | DIP-gated tape input |
 | microFRANK | RP2350A | |
 | zeroFRANK | RP2350A | |
-| OldSkoolFRANK | RP2350A | DB9 gamepads |
+| OldSkoolFRANK | PGA2350 module | DB9 gamepads, TDA1545A into an LM358. VGA by default — the socket is chosen by solder jumpers the firmware cannot see |
 | FRANK Core 2 | RP2350B + RP2350A | Inter-processor link. One descriptor covers Core 2 and Core 2U; the U revision adds tape and a USB hub |
 | FRANK Next | RP2350B | TLV320 codec |
 | Waveshare RP2350-PiZero ("Z0pa") | RP2350B | HDMI on GP32-39, driven from the PIO; optional PCM5122 audio hat |
+| xt8086 | RP2350B + 8086 | The RP2350 is the 8086's whole chipset, so GP0-29 are a CPU bus. VGA only, on GP30-37; one PWM pin for sound |
 
 An unidentified board still boots and draws the screen. It assumes only the
 conventions the whole fleet shares: video on GP12-19, microSD on GP4-7, I²S on
@@ -91,16 +92,26 @@ GPIO the package does not have.
 | Board | Image |
 |---|---|
 | miniFRANK, microFRANK, zeroFRANK | `rp2350a` |
-| MegaFRANK, OldSkoolFRANK, FRANK Next | `rp2350b` |
+| MegaFRANK, FRANK Next | `rp2350b` |
+| OldSkoolFRANK | `rp2350b` — a PGA2350 is always the B package |
 | Waveshare RP2350-PiZero ("Z0pa") | `rp2350b` — its HDMI is on GP32-39, which only the B package has |
 | FRANK PGA | `rp2350b` — a PGA2350 is always the B package |
 | FRANK | whichever module is in the socket: a Pico 2 is `rp2350a`, a Pico Plus 2 is `rp2350b` |
 | FRANK Core 2, Core 2U — master | `rp2350b` |
 | FRANK Core 2, Core 2U — slave | `slave` |
+| xt8086 | `xt8086` — the same program as `rp2350b`, with the console moved |
 
 The slave image is a different program: the link peer the master talks to. Flash
 it to the second chip of a Core 2 or Core 2U, or "Processor link" and "Slave
 reset" will correctly report that nothing answered.
+
+The `xt8086` image is not a different program — everything peculiar to that board
+is in its descriptor, which is where board differences belong. The one thing a
+descriptor cannot move is the console UART, because stdio is up long before
+detection runs, and `rp2350b` puts it on GP0/GP1. On xt8086 those are the 8086's
+AD0 and AD1, so the generic image would drive two lines of a live CPU's address
+bus with every `printf`. The `xt8086` image is the same firmware with its console
+on GP44/GP45, where the board's header is.
 
 ---
 
@@ -174,11 +185,26 @@ and unique ID come from the same place, then flash JEDEC ID, then PSRAM presence
 and size.
 
 **Inventory.** A DS3231 at 0x68, a TLV320 codec, a DS2401 silicon serial. Each is
-on some boards and not others.
+on some boards and not others. The I²C sweep tries each candidate's bus in turn
+and stops at the first that answers, which is a safety property as much as a
+saving: bit-banging a bus onto pins that are something else on the board in front
+of you drives them, and GP38/GP39 are xt8086's I²C but frank_next's ESP32 reset
+and boot-mode lines.
 
 **Fingerprint.** Pins get pulled up, released, and classified by how they settle.
 Scoring is a *ratio* of pins matched, not a count, so a board with seven
 signature pins cannot beat a board with six just by having more of them.
+
+A signature is only as good as what it was written from, and the generator that
+produces `docs/pinouts.txt` prints one hop. `GPIO0 -> R10[1K].pin1` says a 1K
+resistor is on that pin and nothing about where its other end goes.
+OldSkoolFRANK's went to the 3V3 rail, was read as a series resistor into the PS/2
+connector, and its four most distinctive pins were recorded as floating when they
+are held high — which made the board match FRANK PGA's signature completely and
+its own barely at all. It reported itself as a FRANK PGA. What separates them is
+the ESP-01S strapping: OldSkoolFRANK alone brings GPIO2 and GPIO0 back to GP23
+and GP24, and does it with pull-ups on the carrier, so they read high with no
+module fitted.
 
 **The operator.** When two descriptors tie the firmware says so and asks, instead
 of picking one and being quietly wrong. Two boards that test identically are not
@@ -196,25 +222,44 @@ image gets moved. A reset starts again from what the hardware says.
 
 ## Video
 
-Four backends, all 640×480, chosen at boot or from the Video menu.
+Five backends, all 640×480, chosen at boot or from the Video menu.
 
 | Mode | How | Notes |
 |---|---|---|
 | HDMI | HSTX, TMDS | Default. `clk_hstx` at 126 MHz |
 | HDMI | PIO, TMDS | For connectors HSTX cannot reach — see below |
 | VGA | HSTX, raw 8-lane | Same GP12-19 pins through the resistor ladder |
+| VGA | PIO, raw 8-lane | For ladders HSTX cannot reach — xt8086's, on GP30-37 |
 | Composite | PIO software encoder | PAL/NTSC, 320×240 |
 
 HSTX is wired to GP12-19 on the RP2350 and nowhere else, which is fine for every
-FRANK board and wrong for the Waveshare PiZero, whose connector is on GP32-39.
-That board is served by a PIO HDMI driver instead, vendored from murmnes. Both
-backends claim the HDMI mode and each refuses the boards it cannot serve, so the
-descriptor's `video_base` is what decides — the HSTX path is better where it
-works and is tried first.
+FRANK board and wrong for two others: the Waveshare PiZero, whose HDMI connector
+is on GP32-39, and xt8086, whose VGA ladder is on GP30-37. Both are served by PIO
+drivers instead, vendored from murmnes. Each mode is claimed by more than one
+backend and every backend refuses the pin bases it cannot drive, so the
+descriptor's `video_base` is what decides — the HSTX paths are better where they
+work and are tried first.
+
+Refusing is not a formality. On xt8086 the pins HSTX would drive are the 8086's
+AD12-A19, so a backend that came up anyway would not merely leave the socket dark
+— it would clock a video signal into a live CPU's address bus. Every backend now
+checks the base against the one it was built for and declines exact mismatches,
+including the composite one, which is the last resort of `ui_video_open()`'s
+second pass and would otherwise have been the fallback that did it.
 
 Hold **H**, **V**, **C** or **A** (auto) during the two-second window at boot.
 Choosing from the Video menu instead reboots, because the boot path is the only
 code path that has ever been tested for bringing a backend up.
+
+**OldSkoolFRANK comes up on VGA**, and it is the one board where a descriptor
+outranks the detector. Its HDMI and VGA sockets are the same eight pins — GP12-19
+through 220R, with JP3/JP4/JP5 shorting each colour's differential pair into one
+DSUB-15 line — so no probe can tell which socket is live, and the detector's
+answer was the fleet's HDMI default with a measurement's authority attached. A
+board jumpered for VGA came up on an empty HDMI socket because of it. Hold **H**
+at boot for the other one. (The two resistors per colour are equal rather than
+weighted, so that ladder gives three levels per channel and not four — greys are
+coarser here than on MegaFRANK.)
 
 Nothing about video is written to flash. The menu's request rides a watchdog
 scratch register across the reboot that applies it and is consumed there, so a
@@ -229,8 +274,8 @@ somewhere around 320 usable samples however you arrange the source, and 6-pixel
 type resampled to fit stops being type. It renders its own text page instead: 42
 columns by 30 rows at native resolution, same information, actually legible.
 
-The PIO HDMI path scans a 320×240 framebuffer doubled to 640×480, so it has the
-same problem and takes the same answer — the text page, 53 columns by 30 rows
+The two PIO paths scan a 320×240 framebuffer doubled to 640×480, so they have the
+same problem and take the same answer — the text page, 53 columns by 30 rows
 there. Menus, the board picker and every dialog are drawn on it, which they have
 to be: on those outputs there is nothing behind them, so an unidentified board
 would otherwise have no way to reach Set Board and no way to run anything.
@@ -302,6 +347,12 @@ The short scan skips pins that are tied together on purpose. The link buses run
 adjacent pins to the same places by design, GP9-11 are joined by the audio
 network, and driving the link's control lines resets the slave. Flagging those
 every run would just teach you to ignore the result.
+
+It also skips a host CPU bus where the descriptor declares one, and that skip is
+there to stop a test rather than to avoid a false positive: on xt8086 the sweep's
+neighbour is an 8086's address bus. The row says how many pairs it actually
+tested, so a board where most pins are spoken for reports a smaller number rather
+than the same reassurance as a board where none are.
 
 ### Storage
 
@@ -391,6 +442,29 @@ An AY comes out of reset with its registers undefined, and nothing on these
 boards resets it except the R bit in the 74HC595 word — so a board that was making
 a noise when the reset button was pressed carried on making it, through the
 reboot, until something wrote to the chips.
+
+**The TDA on OldSkoolFRANK is a TDA1545A**, not the fleet's TDA1387, and the two
+disagree about which half of the frame is which. I²S selects the left channel
+with word select low; the TDA1545A takes the older simultaneous/EIAJ convention
+and selects the right. Same bitstream, opposite speakers — which is exactly what
+it sounded like. The descriptor sets `i2s_lr_swapped` and the two labels are
+exchanged where the pass is composed, leaving `i2s_tone()`'s packing alone
+because that is correct for I²S and was got wrong once already.
+
+It is a fact about the part and not about the board: the path from the DAC to the
+jack was traced end to end and is conventional — U7's IOL reaches the tip through
+U6B, IOR reaches the ring through U6A, and on a TRS jack tip is left. The
+PCM5122 hat and FRANK Next's TLV320 are unaffected; both are ordinary I²S
+whatever board they sit on.
+
+**PWM on xt8086** is the whole of that board's sound and reaches it differently
+from everywhere else. On the FRANK boards PWM is the fourth input of the audio
+mux, a pair of pins that are the I²S ones wearing another function; on xt8086
+there is no mux and no DAC, just GP46 into a set of links. So it makes one pass
+rather than three, is named *Mono* rather than *Left*, and the dialog says which
+link to move — JP1 sends it to the HDMI converter's analogue input, JP2 to the
+3.5 mm jack, JP3 and JP4 to the buzzer. Listening at the jack with the link set
+to the buzzer sounds precisely like a dead output.
 
 On a board with an audio mux the dialog tells you which switch positions that
 source needs. The mux is a 4:1 selector rather than two enables, so setting both
@@ -579,8 +653,20 @@ is something only a television can tell you.
 Whether an LED lights. Firmware can drive a pin and cannot see light, which is
 why the LED check is a dialog with no verdict rather than a row.
 
-Twenty-one of the thirty-one capability bits are tested or interactively covered
-today.
+**The 8086 on xt8086.** Nothing here starts it, and that is a decision rather
+than an oversight. The CPU has no oscillator of its own — its clock comes from
+GP29 — so with the firmware leaving that pin alone it executes nothing and its
+bus stays in the high-impedance state it powers up in, which is exactly what lets
+the rig test the board's memory, storage, video, clock and USB without a second
+chip fighting it for thirty GPIOs. The descriptor claims GP0-29 so the pin-short
+sweep skips them, and the report says the board has a host CPU and that it was
+not exercised. A liveness test is possible and is the obvious next thing: hold
+RESET, drive a clock, release, and count ALE pulses. It is not here because it
+has not been run on hardware, and a test that has not been is not evidence.
+
+Twenty-two of the thirty-three capability bits are tested or interactively
+covered today. The two new ones are xt8086's: `CAP_AUDIO_PWM` is covered by the
+Audio dialog, and `CAP_HOST_8086` is the untested one described above.
 [docs/ROADMAP.md](docs/ROADMAP.md) goes through the rest: what a test could
 honestly prove, what it could not, and a sensible order to do them in.
 
@@ -639,15 +725,17 @@ a binary cannot disagree with its own filename.
 ./release.sh 1.05
 ```
 
-That puts three files in `release/`:
+That puts four files in `release/`:
 
 - `frank-test_1_05_rp2350a.uf2`, the test firmware for the 30-GPIO package
 - `frank-test_1_05_rp2350b.uf2`, the same program for the 48-GPIO package
+- `frank-test_1_05_xt8086.uf2`, the same program again with its console moved
 - `frank-test_1_05_slave.uf2`, the link peer for Core 2 and Core 2U
 
-The first two are one program that works out which board it is on at run time,
+The first three are one program that works out which board it is on at run time,
 so the split is by silicon rather than by board — the table under
-[Which image](#which-image) says which package a board takes.
+[Which image](#which-image) says which package a board takes, and why xt8086 is
+the one board that needs its own build.
 
 ---
 
@@ -660,7 +748,7 @@ ui/           4 bpp drawing, windows, menus, icons, video backends
 tests/        one file per subsystem under test
 common/       the inter-processor link stack, shared with the core2 firmware
 drivers/      vendored hardware drivers (see Attribution)
-              hdmi_pio/ the PIO HDMI backend, pcm5122/ the audio hat's DAC
+              hdmi_pio/ the PIO HDMI and VGA backends, pcm5122/ the hat's DAC
 boards/       Pico SDK board headers for each FRANK variant
 slave/        the link peer firmware
 screenshots/  captured over HDMI from real hardware
@@ -698,7 +786,7 @@ top.
 | NES/SNES gamepad PIO reader (`drivers/nespad`) | [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) | shuichitakano, fhoedemakers (MIT) |
 | SD CID/CSD decode and manufacturer table (`tests/tests_sd.c`) | [SpeccyP](https://github.com/billgilbert7000/SpeccyP), `drivers/pico_fatfs/tf_card.c` | Constantin (billgilbert7000) and contributors |
 | FatFs (`drivers/fatfs`) | [elm-chan.org](http://elm-chan.org/fsw/ff/) | ChaN (BSD-style) |
-| PIO HDMI driver (`drivers/hdmi_pio`) | [murmnes](https://github.com/rh1tech/murmnes) | Mikhail Matveev, after the Murmulator lineage |
+| PIO HDMI and VGA drivers (`drivers/hdmi_pio`) | [murmnes](https://github.com/rh1tech/murmnes) | Mikhail Matveev, after the Murmulator lineage |
 | PCM5122 DAC bring-up (`drivers/pcm5122`) | [SpeccyP](https://github.com/billgilbert7000/SpeccyP), `drivers/pcm5122` | Constantin (billgilbert7000) and contributors |
 | I²S audio PIO (`drivers/audio_i2s.pio`) | Raspberry Pi Pico examples lineage | |
 | USB HID host, XInput (`drivers/usbhid`) | TinyUSB and contributors | |

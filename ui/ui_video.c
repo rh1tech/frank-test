@@ -29,23 +29,32 @@ extern const ui_video_backend_t ui_video_backend_hstx_hdmi;
 extern const ui_video_backend_t ui_video_backend_hstx_vga;
 extern const ui_video_backend_t ui_video_backend_tv;
 extern const ui_video_backend_t ui_video_backend_pio_hdmi;
+extern const ui_video_backend_t ui_video_backend_pio_vga;
+
+/* The board's video pin base. Defaults to the fleet's GP12-19 so that an
+ * unidentified board — whose fallback descriptor says the same — still
+ * gets a picture. See ui_video.h. */
+static int pin_base = 12;
+
+void ui_video_set_pin_base(int base) { pin_base = base; }
+int  ui_video_pin_base(void)         { return pin_base; }
 
 /* Ordered by preference within each mode. The first one whose init()
  * succeeds wins; a backend that cannot run returns false and the next is
  * tried.
  *
- * The VGA and composite backends land here as they are ported — see
- * PLAN.md phase 5f. Until they do, asking for VGA falls back to HDMI and
- * says so, which is the correct behaviour rather than a placeholder: the
- * operator gets a picture and a message, not a blank screen. */
+ * Every entry checks ui_video_pin_base() and refuses what it cannot
+ * drive, so the ordering only decides which of two backends that both
+ * *could* serve a board gets it. */
 static const ui_video_backend_t *const backends[] = {
     /* HSTX first: where the pins allow it, hardware TMDS beats a PIO
-     * program and a core. The PIO backend refuses those boards and
-     * takes the ones HSTX cannot reach - the Waveshare PiZero, whose
-     * connector is on GP32-39. */
+     * program and a core. The PIO backends refuse those boards and take
+     * the ones HSTX cannot reach - the Waveshare PiZero, whose HDMI is
+     * on GP32-39, and xt8086, whose VGA ladder is on GP30-37. */
     &ui_video_backend_hstx_hdmi,
     &ui_video_backend_pio_hdmi,
     &ui_video_backend_hstx_vga,
+    &ui_video_backend_pio_vga,
     &ui_video_backend_tv,
 };
 

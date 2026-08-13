@@ -39,6 +39,15 @@
  *     one; no GPIO reaches them. The "pulse reset and watch for the ROM
  *     banner" probe only works on frank_next. Elsewhere the ESP has to be
  *     detected by talking to it (AT/OK) rather than by rebooting it.
+ *
+ *     That still holds, but it was written as "no GPIO reaches any of the
+ *     ESP's control pins", which is wider than the netlists support.
+ *     oldskoolfrank brings GPIO2 and GPIO0 back to GP23 and GP24. It
+ *     changes nothing about resetting the part - CH_PD there is not
+ *     connected to anything at all and RST is on SW3, so the straps
+ *     cannot be made to take effect - but the two pins are wired, they
+ *     carry pull-ups, and those pull-ups are what tells this board apart
+ *     from frank_pga. See sig_oldskoolfrank.
  */
 
 #include "board_desc.h"
@@ -121,25 +130,59 @@ static const pinsig_entry_t sig_z0pa[] = {
 static const pinsig_entry_t sig_frank_pga[] = {
     { 0, PINSIG_HIGH }, { 1, PINSIG_HIGH },
     { 2, PINSIG_HIGH }, { 3, PINSIG_HIGH },    /* TXS0104 A-side, 10K    */
+    /* Bare pads, and the only thing left that separates this board from
+     * oldskoolfrank — which brings its ESP-01S strapping pins back here
+     * through 1K. Everything above is now identical on the two: see
+     * sig_oldskoolfrank for why GP0-3 stopped being a discriminator. */
+    { 23, PINSIG_FLOAT }, { 24, PINSIG_FLOAT },
     { 28, PINSIG_FLOAT }, { 29, PINSIG_FLOAT },/* no I2C                 */
     { 30, PINSIG_FLOAT },                      /* no 1-Wire              */
-    { 47, PINSIG_FLOAT },                      /* no PSRAM               */
+    /* The PGA2350's own PSRAM chip select, pulled up inside the module.
+     * This said FLOAT on the reasoning that the carrier fits no PSRAM,
+     * which is true and is not what the pin reads: a Pimoroni PGA2350
+     * brings 8 MB on GP47 exactly as a Pico Plus 2 does. Measured high
+     * on hardware. */
+    { 47, PINSIG_HIGH },
 };
 
 static const pinsig_entry_t sig_megafrank[] = {
     { 0, PINSIG_HIGH }, { 2, PINSIG_HIGH },
     { 28, PINSIG_HIGH }, { 29, PINSIG_HIGH },  /* I2C, 4.7K              */
     { 30, PINSIG_HIGH },                       /* DS2401, 4.7K           */
-    { 47, PINSIG_FLOAT },
+    { 47, PINSIG_HIGH },                       /* the module's PSRAM CS  */
 };
 
-/* oldskoolfrank drives PS/2 through bare 1K series resistors with no
- * pull-up to 3V3, so GP0..3 float where frank_pga's are held high. */
+/* This said "oldskoolfrank drives PS/2 through bare 1K series resistors
+ * with no pull-up to 3V3, so GP0..3 float where frank_pga's are held
+ * high", and expected all four to float. Every part of that is wrong,
+ * and it was wrong when it was written rather than overtaken by a board
+ * revision — the netlist has not changed.
+ *
+ * R10-R13 are 1K to +3V3, not series resistors into the connector. The
+ * generator prints one hop, so `GPIO0 -> R10[1K].pin1` says nothing
+ * about where R10's other end goes, and it was read as though it went to
+ * the MDC-036. It goes to the rail. All four pins are held high, exactly
+ * as frank_pga's are through its 10K.
+ *
+ * The cost was not four wrong entries, it was the identification: with
+ * GP0-3 high and everything else in the old signature agreeing, a real
+ * oldskoolfrank matched frank_pga's whole signature and only three of
+ * its own seven. It reported itself as a FRANK PGA, confidently, and
+ * would have gone on doing so.
+ *
+ * What actually separates the two is the ESP-01S strapping. Both boards
+ * carry an ESP-01S on the same UART, but oldskoolfrank alone brings
+ * GPIO2 and GPIO0 back to the MCU — GP23 and GP24, through 1K, each with
+ * a 10K pull-up to 3V3 of its own (R1/R3 and R2/R4). Both read high, and
+ * they do so with no module fitted, because those four resistors are on
+ * the carrier rather than on the ESP. frank_pga leaves both pins
+ * unconnected. */
 static const pinsig_entry_t sig_oldskoolfrank[] = {
-    { 0, PINSIG_FLOAT }, { 1, PINSIG_FLOAT },
-    { 2, PINSIG_FLOAT }, { 3, PINSIG_FLOAT },
+    { 0, PINSIG_HIGH }, { 1, PINSIG_HIGH },
+    { 2, PINSIG_HIGH }, { 3, PINSIG_HIGH },    /* R10-R13, 1K to 3V3     */
+    { 23, PINSIG_HIGH }, { 24, PINSIG_HIGH },  /* ESP GPIO2/GPIO0, 1K+10K*/
     { 28, PINSIG_FLOAT }, { 30, PINSIG_FLOAT },
-    { 47, PINSIG_FLOAT },
+    { 47, PINSIG_HIGH },                       /* the module's PSRAM CS  */
 };
 
 static const pinsig_entry_t sig_core2_master[] = {
@@ -148,6 +191,24 @@ static const pinsig_entry_t sig_core2_master[] = {
                                                /* unconnected slave RUN  */
     { 2, PINSIG_FLOAT }, { 3, PINSIG_FLOAT },
     { 23, PINSIG_FLOAT }, { 28, PINSIG_FLOAT },
+};
+
+/* xt8086, and the constraint that shapes it: every pin below GP30 is
+ * wired to a real 8086, so none of them may appear here.
+ *
+ * pinsig.c's second phase drives a pad low for ten microseconds to tell
+ * a pull-up from a floating pin. Doing that to AD0-15 is contention with
+ * a CPU that may be driving them, and doing it to GP28 or GP29 is
+ * poking that CPU's reset and clock. The signature is therefore drawn
+ * entirely from GP36 upward, which is enough on its own: eleven pins,
+ * and no other RP2350B descriptor matches more than eight of them. */
+static const pinsig_entry_t sig_xt8086[] = {
+    { 36, PINSIG_FLOAT }, { 37, PINSIG_FLOAT },  /* VGA HS/VS, no pulls   */
+    { 38, PINSIG_HIGH  }, { 39, PINSIG_HIGH  },  /* I2C to the DS3231, 4K7*/
+    { 40, PINSIG_FLOAT }, { 41, PINSIG_FLOAT },  /* microSD on SPI1, and  */
+    { 42, PINSIG_FLOAT }, { 43, PINSIG_FLOAT },  /* not a pull-up on it   */
+    { 44, PINSIG_FLOAT }, { 45, PINSIG_FLOAT },  /* the UART header       */
+    { 47, PINSIG_HIGH  },                        /* PSRAM CE, 10K         */
 };
 
 static const pinsig_entry_t sig_next[] = {
@@ -199,12 +260,14 @@ static const pinsig_entry_t sig_next[] = {
     .sd_dat0 = NC, .sd_cs = NC, .sd_clk = NC, .sd_cmd = NC, \
     .sd_dat1 = NC, .sd_dat2 = NC, \
     .i2s_data = NC, .i2s_clk_base = NC, .i2s_mclk = NC, \
+    .speaker = NC, \
     .pcm_i2s_data = NC, .pcm_i2s_clk_base = NC, \
     .video_base = NC, \
     .psram_cs = NC, .psram_soft_sclk = NC, \
     .psram_soft_mosi = NC, .psram_soft_miso = NC, \
     .led_ws2812 = NC, .led_plain = NC, \
-    .esp_uart_tx = NC, .esp_uart_rx = NC, .esp_chip_pu = NC, .esp_gpio0 = NC, \
+    .esp_uart_tx = NC, .esp_uart_rx = NC, .esp_chip_pu = NC, \
+    .esp_gpio0 = NC, .esp_gpio2 = NC, \
     .esp_spi_miso = NC, .esp_spi_cs = NC, .esp_spi_sck = NC, \
     .esp_spi_mosi = NC, .esp_hs = NC, .esp_ready = NC, .esp_mux_sel = NC, \
     .pad_latch = NC, .pad_clk = NC, .pad_d1 = NC, .pad_d2 = NC, \
@@ -214,6 +277,8 @@ static const pinsig_entry_t sig_next[] = {
     .pio_usb_dp = NC, \
     .ay_rclk = NC, .ay_srclk = NC, .ay_ser = NC, \
     .dip = NC, \
+    .host_bus_base = NC, .host_bus_len = 0, \
+    .host_clk = NC, .host_reset = NC, .host_ready = NC, \
     .link_a_data = NC, .link_b_data = NC, \
     .link_fs = NC, .link_db_out = NC, .link_db_in = NC
 
@@ -241,7 +306,7 @@ const frank_board_desc_t frank_board_table[] = {
      * what FRANK_MCU_ANY is for. */
     .mcu = FRANK_MCU_ANY,
     .role = FRANK_ROLE_SINGLE,
-    .pico_socket = true,
+    .pico_socket = true, .module_memory = true,
     .caps = CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE
           | CAP_AUDIO_I2S | CAP_AUDIO_AMP | CAP_AUDIO_MUX
           | CAP_SD | CAP_PS2 | CAP_GAMEPAD_NES
@@ -264,6 +329,9 @@ const frank_board_desc_t frank_board_table[] = {
 {
     .id = FRANK_BOARD_FRANK_PGA, .name = "FRANK PGA", .slug = "pga",
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
+    /* A Pimoroni PGA2350, which brings its own flash and 8 MB of PSRAM
+     * on GP47. Not pico_socket: a PGA2350 exposes all 48 GPIOs. */
+    .module_memory = true,
     .caps = CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE
           | CAP_AUDIO_I2S | CAP_AUDIO_AMP | CAP_AUDIO_MUX
           | CAP_SD | CAP_PS2 | CAP_GAMEPAD_NES | CAP_TAPE_IN
@@ -284,6 +352,9 @@ const frank_board_desc_t frank_board_table[] = {
 {
     .id = FRANK_BOARD_MEGAFRANK, .name = "MegaFRANK", .slug = "mega",
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
+    /* PGA2350: the QMI PSRAM found on GP47 is the module's. This board's
+     * own PSRAM is the bit-banged SPI part on GP31-34. */
+    .module_memory = true,
     .caps = CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE
           | CAP_AUDIO_I2S | CAP_AUDIO_AMP | CAP_AUDIO_MUX | CAP_TURBOSOUND
           | CAP_SD | CAP_PS2 | CAP_GAMEPAD_NES
@@ -371,10 +442,30 @@ const frank_board_desc_t frank_board_table[] = {
     .id = FRANK_BOARD_OLDSKOOLFRANK, .name = "OldSkoolFRANK",
     .slug = "oldskool",
     .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
-    /* HDMI and VGA are selected by solder jumpers JP3/JP4/JP5, so only
-     * one of them is fitted on any given board. Both are declared; the
-     * detector reports what is electrically present and says that a sink
-     * on the unfitted connector is invisible to it. */
+    /* PGA2350, so the 8 MB that answers on GP47 belongs to the module
+     * and not to this carrier. Without saying so, that PSRAM vetoed this
+     * descriptor out of its own identification and the board reported
+     * itself as a FRANK. */
+    .module_memory = true,
+    /* HDMI and VGA are the same eight pins, and which socket they reach
+     * is decided by three solder jumpers.
+     *
+     * GP12-19 each drive a 220R resistor. On the HDMI side the eight
+     * legs are four differential pairs; JP3, JP4 and JP5 short each
+     * colour pair's two legs together, which turns them into one node
+     * feeding one pin of the DSUB-15 — blue on GP12/13, green on GP14/15,
+     * red on GP16/17, with GP18 and GP19 going straight to HSYNC and
+     * VSYNC. That is the fleet's ladder order, B0 B1 G0 G1 R0 R1 HS VS,
+     * so the HSTX VGA backend drives it unmodified.
+     *
+     * The two resistors per colour are equal rather than weighted, so
+     * the four codes give three levels and not four: 01 and 10 are the
+     * same voltage. Worth knowing when the greys look coarser here than
+     * on megafrank, which uses a real 2R/R ladder.
+     *
+     * Both outputs are declared, because either can be jumpered and an
+     * operator can still ask for the other by holding H at boot. Which
+     * one comes up unasked is video_default below. */
     .caps = CAP_VIDEO_HDMI | CAP_VIDEO_VGA
           | CAP_AUDIO_I2S | CAP_AUDIO_AMP
           | CAP_SD | CAP_PS2 | CAP_GAMEPAD_DB9 | CAP_TAPE_IN
@@ -384,12 +475,30 @@ const frank_board_desc_t frank_board_table[] = {
               PINS_I2S_TDA, PINS_PAD_NES,
               .video_base = 12, .led_plain = 25,
               .esp_uart_tx = 38, .esp_uart_rx = 39,
+              /* The one board whose ESP-01S strapping pins reach the
+               * MCU. Recorded so the short sweep leaves them alone and
+               * so the signature's claim on them has a stated source;
+               * nothing drives them, because with CH_PD unconnected and
+               * RST on SW3 there is no way to make the part sample
+               * them. */
+              .esp_gpio0 = 24, .esp_gpio2 = 23,
               .tape_in = 22 },
     SIG(sig_oldskoolfrank),
+    /* VGA unless somebody says otherwise. The detector cannot see a
+     * solder jumper, so on this board alone the descriptor knows better
+     * than the probe - see board_desc.h and video_select.h. */
+    .video_default = VIDEO_VGA,
+    /* The TDA1545A calls word-select high the left channel where I2S
+     * calls it the right, so left and right came out of the sides they
+     * are not named after. Heard on the bench; the board's own wiring
+     * from the DAC to the jack was traced and is conventional. */
+    .i2s_lr_swapped = true,
     .flash_bytes = 0, .psram_bytes = 0,
-    .manual_note = "Video output is chosen by solder jumpers JP3/JP4/JP5, "
-                   "not by firmware. The DAC is a TDA1545A, not a TDA1387. "
-                   "S2 selects the USB mux.",
+    .manual_note = "Video is chosen by solder jumpers JP3/JP4/JP5, not by "
+                   "firmware: closed is VGA on J11, open is HDMI on J10. "
+                   "VGA is what comes up unasked; hold H at boot for the "
+                   "other. The DAC is a TDA1545A, not a TDA1387, into an "
+                   "LM358 rather than a PAM8403. S2 selects the USB mux.",
 },
 
 
@@ -555,6 +664,83 @@ const frank_board_desc_t frank_board_table[] = {
                    "than the desktop - 320x240 is what that driver "
                    "scans. The PCM5122 audio hat, if fitted, sits on I2S "
                    "GP18/19 with I2C on GP2/GP3.",
+},
+
+/* ---------------------------------------------------------------- */
+{
+    /* xt8086, and the first board in the fleet where the RP2350 is not
+     * the computer.
+     *
+     * U5 is a real 8086 in minimum mode and the RP2350B is its entire
+     * chipset: clock generator, wait-state logic, memory and every
+     * peripheral. That takes GP0-29, which is why nothing this firmware
+     * normally expects is where it normally is — microSD moves to
+     * GP40-43, the console to GP44/45, I2C to GP38/39 and video to
+     * GP30-37.
+     *
+     * VIDEO IS VGA, AND ONLY VGA.
+     *
+     * There are two connectors and one signal. GP30-37 drive a resistor
+     * ladder — 800R/400R per channel, two bits each, syncs on GP36/37 —
+     * which reaches the DSUB-15 at J11 directly and also feeds U16, an
+     * MS9288A that converts that analogue VGA back up to TMDS for the
+     * HDMI socket at J12. So the HDMI connector carries VGA that has
+     * been through a converter, and the firmware has no HDMI path to
+     * offer: CAP_VIDEO_HDMI is not declared, and video_detect.c's
+     * "a VGA-only board is the one case where the verdict still stands"
+     * applies here and nowhere else.
+     *
+     * The pin order is the fleet's, one octave up: B0 B1 G0 G1 R0 R1 HS
+     * VS from video_base, which is the same byte the HSTX VGA backend
+     * builds. What is different is the base. HSTX is hard-wired to
+     * GP12-19 on this silicon and those pins are AD12-A19 here, so the
+     * hardware backend cannot serve this board and must not try — see
+     * ui_video_vga.c, which now refuses any base but 12. The PIO VGA
+     * backend takes it instead, exactly as PIO HDMI took the PiZero, and
+     * like that path it scans 320x240 and so draws the text page rather
+     * than the desktop.
+     *
+     * AUDIO IS ONE PIN.
+     *
+     * GP46 through JP1/JP2/JP3/JP4 to the buzzer, the 3.5 mm jack, or
+     * the MS9288A's analogue input so the converted HDMI carries sound.
+     * No DAC, no mux, no second channel: CAP_AUDIO_PWM. */
+    .id = FRANK_BOARD_XT8086, .name = "xt8086", .slug = "xt8086",
+    .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
+    .caps = CAP_VIDEO_VGA
+          | CAP_AUDIO_PWM
+          | CAP_SD | CAP_PSRAM_QMI
+          | CAP_I2C | CAP_RTC_DS3231
+          | CAP_USB_DEVICE | CAP_USB_HOST | CAP_USB_HUB | CAP_USB_MUX
+          | CAP_HOST_8086,
+    .pins = { PINS_NONE,
+              /* J1, and not GP0/1: those are AD0 and AD1. */
+              .uart_tx = 44, .uart_rx = 45,
+              /* SPI1 — GP40-43 have no SPI0 mapping. Same DAT0 / CD-DAT3
+               * / CLK / CMD order as the rest of the fleet, four pins
+               * higher up. */
+              .sd_dat0 = 40, .sd_cs = 41, .sd_clk = 42, .sd_cmd = 43,
+              .video_base = 30,
+              .speaker = 46,
+              .psram_cs = 47,
+              .i2c_sda = 38, .i2c_scl = 39,
+              /* GP0-29 belong to U5. Declared as a run so the short
+               * sweep skips them; the individual lines are in
+               * docs/pinouts.txt. */
+              .host_bus_base = 0, .host_bus_len = 30,
+              .host_clk = 29, .host_reset = 28, .host_ready = 27 },
+    SIG(sig_xt8086),
+    .flash_bytes = 16u * 1024u * 1024u,      /* U7, W25Q128JVPIQ  */
+    .psram_bytes = 8u * 1024u * 1024u,       /* U8, ESP-PSRAM64H  */
+    .manual_note = "The 8086 (U5) has no clock unless firmware makes one on "
+                   "GP29, so it executes nothing and its bus stays high-Z - "
+                   "which is what lets the rig test the rest of the board. "
+                   "Nothing here starts it. S2 grounds the VGA ladder's 75R "
+                   "terminations: with it open the picture is roughly double "
+                   "level and the HDMI converter sees the same. S1 selects "
+                   "the USB mux. JP1-JP4 send GP46 to the HDMI converter, "
+                   "the jack, or the buzzer - one at a time. LD1 is on "
+                   "GP25/BHE and belongs to the CPU, not to the firmware.",
 },
 
 };

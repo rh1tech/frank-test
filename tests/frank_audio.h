@@ -56,16 +56,24 @@ const char *audio_src_name(audio_src_t s);
  * mono and fed from the left output mixer alone: a right-channel pass on
  * it is silence by construction, and asking someone to listen to a
  * channel the hardware was never going to reproduce is how "Silent" gets
- * pressed about a speaker that works. */
-int audio_src_passes(audio_src_t s);
+ * pressed about a speaker that works.
+ *
+ * One for PWM too, but only on a board that reaches it through a single
+ * speaker pin rather than through the two-pin audio mux — which is why
+ * this takes the board. xt8086's GP46 is one pin into one buzzer, and it
+ * is the whole of the board's sound. */
+int audio_src_passes(const detect_result_t *d, audio_src_t s);
 
 /* What to call pass `ch` of this source, on screen and in the log. Takes
- * the source because "Left" is the wrong name for the only pass a mono
- * output makes. */
-const char *audio_channel_name(audio_src_t s, int ch);
+ * the board and the source because "Left" is the wrong name for the only
+ * pass a mono output makes, and whether PWM is mono is a board fact. */
+const char *audio_channel_name(const detect_result_t *d, audio_src_t s, int ch);
 
-/* The capability a board must declare for this source to be reachable. */
-uint32_t audio_src_cap(audio_src_t s);
+/* The capabilities a board must declare for this source to be reachable.
+ * More than one bit where a source is reached differently on different
+ * boards: PWM is the audio mux's fourth input on megafrank and a lone
+ * speaker pin on xt8086, and either will do. */
+frank_caps_t audio_src_cap(audio_src_t s);
 
 /* Is this source usable on the detected board? False when the board
  * lacks the hardware, or when no board has been identified — the pins

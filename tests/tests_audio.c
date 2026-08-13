@@ -91,18 +91,27 @@ static const struct { const char *label; bool left, right; } channels[] = {
     { "Centre", true,  true  },
 };
 
-/* One pass, not three, for the codec's Class-D amp — see frank_audio.h.
- * Everything else in the fleet is stereo from the pin outwards. */
-int audio_src_passes(audio_src_t s) {
-    return s == AUDIO_SRC_TLV320_SPK ? 1 : AUDIO_CHANNELS;
+/* Does this board reach PWM through a lone speaker pin rather than
+ * through the audio mux's pair? One pin is one channel. */
+static bool pwm_is_mono(const detect_result_t *d) {
+    return d && d->board && d->board->pins.speaker != PIN_NC;
 }
 
-const char *audio_channel_name(audio_src_t s, int ch) {
+/* One pass, not three, for the codec's Class-D amp — see frank_audio.h.
+ * Everything else in the fleet is stereo from the pin outwards, except
+ * PWM on a board whose entire sound is one pin into one buzzer. */
+int audio_src_passes(const detect_result_t *d, audio_src_t s) {
+    if (s == AUDIO_SRC_TLV320_SPK) return 1;
+    if (s == AUDIO_SRC_PWM && pwm_is_mono(d)) return 1;
+    return AUDIO_CHANNELS;
+}
+
+const char *audio_channel_name(const detect_result_t *d, audio_src_t s, int ch) {
     /* "Left" would be true of the mono pass — the Class-D amp does take
      * the left mixer — and it would still be the wrong thing to put on
      * screen in the largest type the interface has, because the operator
      * reading it goes looking for the right one. */
-    if (audio_src_passes(s) == 1) return "Mono";
+    if (audio_src_passes(d, s) == 1) return "Mono";
     if (ch < 0 || ch >= AUDIO_CHANNELS) return "?";
     return channels[ch].label;
 }
@@ -119,9 +128,15 @@ const char *audio_src_name(audio_src_t s) {
     }
 }
 
-uint32_t audio_src_cap(audio_src_t s) {
+frank_caps_t audio_src_cap(audio_src_t s) {
     switch (s) {
-        case AUDIO_SRC_PWM: return CAP_AUDIO_MUX;
+        /* Either way of reaching PWM will do, and audio_src_available()
+         * tests for any bit rather than all of them. CAP_AUDIO_MUX is
+         * megafrank's 74HC4052, whose fourth input is a pair of PWM pins;
+         * CAP_AUDIO_PWM is a board with no mux and a single speaker pin.
+         * Gating on the mux alone was fine while it was the only route
+         * and would have hidden xt8086's only output. */
+        case AUDIO_SRC_PWM: return CAP_AUDIO_MUX | CAP_AUDIO_PWM;
         case AUDIO_SRC_I2S: return CAP_AUDIO_I2S;
         case AUDIO_SRC_TS:  return CAP_TURBOSOUND;
         case AUDIO_SRC_PCM5122: return CAP_AUDIO_PCM5122;
@@ -154,6 +169,14 @@ bool audio_src_available(const detect_result_t *d, audio_src_t s) {
 const char *audio_src_hint(const detect_result_t *d, audio_src_t s) {
     if (s == AUDIO_SRC_TLV320_SPK)
         return "Mono: the Class-D amp takes the left channel";
+
+    /* Not a mux position, but the same kind of fact: where the one PWM
+     * pin ends up is a jumper, and an operator listening at the jack
+     * while the link is set to the buzzer hears nothing and has no way
+     * to see why. */
+    if (s == AUDIO_SRC_PWM && d && d->board &&
+        d->board->pins.speaker != PIN_NC)
+        return "One pin: JP1/JP2/JP3 choose HDMI, jack or buzzer";
 
     if (!d || !d->board || !(d->board->caps & CAP_AUDIO_MUX)) return NULL;
     switch (s) {
@@ -329,9 +352,18 @@ static bool i2s_tone(uint32_t hz, bool left, bool right, uint32_t ms,
     return true;
 }
 
-static bool i2s_pass_on(int data_pin, int clk_pin, int ch,
+/* `swap_lr` is the board's, not the protocol's — see i2s_lr_swapped in
+ * board_desc.h. The two labels are exchanged here rather than in
+ * i2s_tone(), whose packing is correct for I2S and whose comment above
+ * explains at length how the halves were established; a DAC that reads
+ * the frame the other way round is a fact about the DAC, and this is the
+ * one line where saying so does not put that reasoning back in doubt. */
+static bool i2s_pass_on(int data_pin, int clk_pin, int ch, bool swap_lr,
                         bool (*abort_fn)(void)) {
     if (!i2s_bring_up(data_pin, clk_pin)) return false;
+
+    const bool want_l = swap_lr ? channels[ch].right : channels[ch].left;
+    const bool want_r = swap_lr ? channels[ch].left  : channels[ch].right;
 
     for (unsigned n = 0; n < MELODY_LEN; n++) {
         if (abort_fn && abort_fn()) return false;
@@ -342,8 +374,8 @@ static bool i2s_pass_on(int data_pin, int clk_pin, int ch,
              * clicks — and on a genuinely stuck channel would look like
              * silence for the wrong reason. */
             if (!i2s_tone(1, false, false, melody[n].ms, abort_fn)) return false;
-        } else if (!i2s_tone(melody[n].hz, channels[ch].left,
-                             channels[ch].right, melody[n].ms, abort_fn)) {
+        } else if (!i2s_tone(melody[n].hz, want_l, want_r,
+                             melody[n].ms, abort_fn)) {
             return false;
         }
     }
@@ -384,7 +416,9 @@ static bool tlv_pass(const frank_pins_t *pins, tlv320_out_t out, int ch,
     if (!tlv320_init((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl, out))
         return false;
 
-    return i2s_pass_on(pins->i2s_data, pins->i2s_clk_base, ch, abort_fn);
+    /* Never swapped: the flag describes the soldered TDA, and this is a
+     * TLV320 taking ordinary I2S. */
+    return i2s_pass_on(pins->i2s_data, pins->i2s_clk_base, ch, false, abort_fn);
 }
 
 static bool pcm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
@@ -392,7 +426,10 @@ static bool pcm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
     if (!pcm5122_init((unsigned)pins->i2c_sda, (unsigned)pins->i2c_scl))
         return false;
 
-    return i2s_pass_on(pins->pcm_i2s_data, pins->pcm_i2s_clk_base, ch, abort_fn);
+    /* Likewise: the hat's DAC is a PCM5122 whatever the board it is
+     * plugged into has soldered down. */
+    return i2s_pass_on(pins->pcm_i2s_data, pins->pcm_i2s_clk_base, ch,
+                       false, abort_fn);
 }
 
 /* Sleep, but let the interface breathe.
@@ -426,11 +463,28 @@ static bool quiet_wait(uint32_t ms, bool (*tick)(void)) {
  * protocol one. It was assigned the obvious way round, data first, and
  * that was wrong: heard on the bench with the passes coming out of the
  * opposite speaker to the one named. */
-static bool pwm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
-    if (pins->i2s_data == PIN_NC) return false;
+/* Which two pins this board's PWM comes out of.
+ *
+ * On the mux boards, the pair the 74HC4052's fourth input watches, which
+ * are the I2S pins wearing a different function. On a board with a
+ * speaker pin, that one pin twice: the melody loop below drives left and
+ * right separately and a mono board makes only the one pass, so pointing
+ * both at the same pad is what makes the same loop serve both shapes
+ * without a second copy of it. */
+static bool pwm_pins(const frank_pins_t *pins, uint *left, uint *right) {
+    if (pins->speaker != PIN_NC) {
+        *left = *right = (uint)pins->speaker;
+        return true;
+    }
+    if (pins->i2s_data == PIN_NC || pins->i2s_clk_base == PIN_NC) return false;
+    *left  = (uint)pins->i2s_clk_base;
+    *right = (uint)pins->i2s_data;
+    return true;
+}
 
-    const uint pin_l = (uint)pins->i2s_clk_base;
-    const uint pin_r = (uint)pins->i2s_data;
+static bool pwm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
+    uint pin_l, pin_r;
+    if (!pwm_pins(pins, &pin_l, &pin_r)) return false;
 
     gpio_set_function(pin_l, GPIO_FUNC_PWM);
     gpio_set_function(pin_r, GPIO_FUNC_PWM);
@@ -489,11 +543,11 @@ static bool pwm_pass(const frank_pins_t *pins, int ch, bool (*abort_fn)(void)) {
     return true;
 }
 
-/* Both pins, so which one is which side does not arise here. */
+/* Both pins, so which one is which side does not arise here. On a mono
+ * board they are the same pin and everything below is idempotent. */
 static void pwm_quiet(const frank_pins_t *pins) {
-    if (pins->i2s_data == PIN_NC) return;
-    const uint pin_l = (uint)pins->i2s_clk_base;
-    const uint pin_r = (uint)pins->i2s_data;
+    uint pin_l, pin_r;
+    if (!pwm_pins(pins, &pin_l, &pin_r)) return;
     pwm_set_gpio_level(pin_l, 0);
     pwm_set_gpio_level(pin_r, 0);
     pwm_set_enabled(pwm_gpio_to_slice_num(pin_l), false);
@@ -670,12 +724,13 @@ static bool ts_pass(const frank_pins_t *pins, int c, bool (*abort_fn)(void)) {
 bool audio_play(const detect_result_t *d, audio_src_t s, int ch,
                 bool (*abort_fn)(void)) {
     if (!audio_src_available(d, s)) return false;
-    if (ch < 0 || ch >= audio_src_passes(s)) return false;
+    if (ch < 0 || ch >= audio_src_passes(d, s)) return false;
 
     const frank_pins_t *pins = &d->board->pins;
     switch (s) {
         case AUDIO_SRC_I2S:
-            return i2s_pass_on(pins->i2s_data, pins->i2s_clk_base, ch, abort_fn);
+            return i2s_pass_on(pins->i2s_data, pins->i2s_clk_base, ch,
+                               d->board->i2s_lr_swapped, abort_fn);
         case AUDIO_SRC_PWM: return pwm_pass(pins, ch, abort_fn);
         case AUDIO_SRC_TS:  return ts_pass(pins, ch, abort_fn);
         case AUDIO_SRC_PCM5122: return pcm_pass(pins, ch, abort_fn);

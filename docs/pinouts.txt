@@ -527,6 +527,59 @@ OLDSKOOLFRANK
 ==============================================================================
 TURBOSOUND
 ==============================================================================
+XT8086_BETA
+
+--- U6 RP2350B  (/RP2350B/)
+  GPIO0   /AD0/GP0                           -> U5[8086_Min_Mode].AD0_16
+  GPIO1   /AD1/GP1                           -> U5[8086_Min_Mode].AD1_15
+  GPIO2   /AD2/GP2                           -> U5[8086_Min_Mode].AD2_14
+  GPIO3   /AD3/GP3                           -> U5[8086_Min_Mode].AD3_13
+  GPIO4   /AD4/GP4                           -> U5[8086_Min_Mode].AD4_12
+  GPIO5   /AD5/GP5                           -> U5[8086_Min_Mode].AD5_11
+  GPIO6   /AD6/GP6                           -> U5[8086_Min_Mode].AD6_10
+  GPIO7   /AD7/GP7                           -> U5[8086_Min_Mode].AD7_9
+  GPIO8   /AD8/GP8                           -> U5[8086_Min_Mode].AD8_8
+  GPIO9   /AD9/GP9                           -> U5[8086_Min_Mode].AD9_7
+  GPIO10  /AD10/GP10                         -> U5[8086_Min_Mode].AD10_6
+  GPIO11  /AD11/GP11                         -> U5[8086_Min_Mode].AD11_5
+  GPIO12  /AD12/GP12                         -> U5[8086_Min_Mode].AD12_4
+  GPIO13  /AD13/GP13                         -> U5[8086_Min_Mode].AD13_3
+  GPIO14  /AD14/GP14                         -> U5[8086_Min_Mode].AD14_2
+  GPIO15  /AD15/GP15                         -> U5[8086_Min_Mode].AD15_39
+  GPIO16  /A16/GP16                          -> U5[8086_Min_Mode].A16/S3_38
+  GPIO17  /A17/GP17                          -> U5[8086_Min_Mode].A17/S4_37
+  GPIO18  /A18/GP18                          -> U5[8086_Min_Mode].A18/S5_36
+  GPIO19  /A19/GP19                          -> U5[8086_Min_Mode].A19/S6_35
+  GPIO20  /ALE/GP20                          -> U5[8086_Min_Mode].ALE_25
+  GPIO21  /RD/GP21                           -> U5[8086_Min_Mode].~{RD}_32
+  GPIO22  /WR/GP22                           -> U5[8086_Min_Mode].~{WR}_29
+  GPIO23  /INTA/GP23                         -> U5[8086_Min_Mode].~{INTA}_24
+  GPIO24  /MIO/GP24                          -> U5[8086_Min_Mode].M/~{IO}_28
+  GPIO25  /BHE/GP25                          -> U5[8086_Min_Mode].~{BHE}/S7_34, R3[1K].pin2
+  GPIO26  /INTR/GP26                         -> U5[8086_Min_Mode].INTR_18
+  GPIO27  /GP27                              -> U2[SN74LS74].D1_2
+  GPIO28  /RESET/GP28                        -> U5[8086_Min_Mode].RESET_21
+  GPIO29  /CLK/GP29                          -> U5[8086_Min_Mode].CLK_19, U1[SN74LS04].1A_1
+  GPIO30  /RP2350B/GP30                      -> R27[800R].pin1
+  GPIO31  /RP2350B/GP31                      -> R28[400R].pin1
+  GPIO32  /RP2350B/GP32                      -> R29[800R].pin1
+  GPIO33  /RP2350B/GP33                      -> R30[400R].pin1
+  GPIO34  /RP2350B/GP34                      -> R31[800R].pin1
+  GPIO35  /RP2350B/GP35                      -> R32[400R].pin1
+  GPIO36  /RP2350B/GP36                      -> J11[VGA].pin13, R38[100R].pin1
+  GPIO37  /RP2350B/GP37                      -> J11[VGA].pin14, R39[100R].pin1
+  GPIO38  /RP2350B/GP38                      -> R26[4.7K].pin1, U15[DS3231MZ].SDA_7
+  GPIO39  /RP2350B/GP39                      -> R25[4.7K].pin1, U15[DS3231MZ].SCL_8
+  GPIO40  /Micro SD/DAT0                     -> J4[104031-0811].DAT0_7
+  GPIO41  /Micro SD/CDDAT3                   -> J4[104031-0811].DAT3/CD_2
+  GPIO42  /Micro SD/CLK                      -> J4[104031-0811].CLK_5
+  GPIO43  /Micro SD/CMD                      -> J4[104031-0811].CMD_3
+  GPIO44  /UART0_TX                          -> J1[UART].Pin_1_1
+  GPIO45  /UART0_RX                          -> J1[UART].Pin_3_3
+  GPIO46  /SPEAKER                           -> JP2[Jack In].Pin_2_2, JP3[Speaker In].Pin_1_1, JP1[HDMI Audio].Pin_2_2
+  GPIO47  /RP2350B/GP47                      -> R13[10K].pin1, U8[ESP-PSRAM64H].~{CE}_1
+
+==============================================================================
 ZEROFRANK
 
 --- U5 RP2350  (/RP2350A/)

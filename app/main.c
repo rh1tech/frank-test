@@ -1325,23 +1325,22 @@ int main(void) {
     g_choice.source = VIDEO_CHOICE_DEFAULT;
 #endif
 
-    /* Which HDMI backend can serve this board is decided by where its
+    /* Which backend can serve this board is decided by where its
      * connector is, and only the descriptor knows. */
     {
-        extern void ui_video_pio_set_base(int base);
 #if defined(FRANK_VIDEO_BASE)
-        /* Bring-up: force the pin base, and so which HDMI backend takes
-         * the board, without waiting on detection to agree. A dark
-         * screen otherwise has two possible causes - the wrong backend
-         * chosen, or the right one not working - and this separates
-         * them in one flash.
+        /* Bring-up: force the pin base, and so which backend takes the
+         * board, without waiting on detection to agree. A dark screen
+         * otherwise has two possible causes - the wrong backend chosen,
+         * or the right one not working - and this separates them in one
+         * flash.
          *
          *   cmake -B bld -DPICO_BOARD=frank_b -DFRANK_VIDEO_BASE=32 */
         printf("[video] FRANK_VIDEO_BASE=%d: detection overridden\n",
                FRANK_VIDEO_BASE);
-        ui_video_pio_set_base(FRANK_VIDEO_BASE);
+        ui_video_set_pin_base(FRANK_VIDEO_BASE);
 #else
-        ui_video_pio_set_base(g_detect.board ? g_detect.board->pins.video_base : 12);
+        ui_video_set_pin_base(g_detect.board ? g_detect.board->pins.video_base : 12);
 #endif
     }
 

@@ -237,7 +237,27 @@ void video_select_boot_window(const frank_board_desc_t *board,
     }
 #endif
 
-    /* ---- 4. autodetect ---- */
+    /* ---- 4. what the board itself declares ----
+     *
+     * Above autodetect rather than below it, which is the whole point of
+     * the field. On a board where the connectors are distinguishable the
+     * detector's verdict is evidence and outranks a declaration; on
+     * oldskoolfrank they are not distinguishable — HDMI and VGA are the
+     * same eight pins, selected by solder jumpers — so its verdict there
+     * is a guess, and the descriptor is the better information. Ranking
+     * a guess above a declaration is how a board that ships jumpered for
+     * VGA came up on an empty HDMI socket.
+     *
+     * Still below all three deliberate choices above, so an operator who
+     * holds H gets HDMI and is not argued with. */
+    if (board->video_default != VIDEO_AUTO &&
+        mode_supported(board, board->video_default)) {
+        out->mode   = board->video_default;
+        out->source = VIDEO_CHOICE_DEFAULT;
+        return;
+    }
+
+    /* ---- 5. autodetect ---- */
     if (detected && detected->verdict != VIDEO_NONE &&
         mode_supported(board, detected->verdict)) {
         out->mode   = detected->verdict;
@@ -245,8 +265,23 @@ void video_select_boot_window(const frank_board_desc_t *board,
         return;
     }
 
-    /* ---- 5. default ---- */
-    out->mode   = (board->caps & CAP_VIDEO_HDMI) ? VIDEO_HDMI : VIDEO_NONE;
+    /* ---- 6. the fleet rule ----
+     *
+     * HDMI where the board has it, because it is what the fleet is wired
+     * for and what a display is most likely plugged into. Otherwise
+     * whatever the board does have.
+     *
+     * That second half used to be VIDEO_NONE, which was safe for as long
+     * as every board with any video at all had an HDMI socket. xt8086
+     * does not - its only output is VGA - so a unit whose detection was
+     * inconclusive fell through to here and came up with no video, on a
+     * board that has a perfectly good connector and one backend that can
+     * drive it. Falling back to the one output a board has is not a
+     * guess; there is nothing else it could mean. */
+    out->mode   = (board->caps & CAP_VIDEO_HDMI)      ? VIDEO_HDMI
+                : (board->caps & CAP_VIDEO_VGA)       ? VIDEO_VGA
+                : (board->caps & CAP_VIDEO_COMPOSITE) ? VIDEO_COMPOSITE
+                                                      : VIDEO_NONE;
     out->source = VIDEO_CHOICE_DEFAULT;
 }
 

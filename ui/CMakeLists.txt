@@ -36,6 +36,7 @@ add_library(frank_ui_video STATIC
     ui_video_vga.c
     ui_textpage.c
     ui_video_pio_hdmi.c
+    ui_video_pio_vga.c
     ui_video_tv.c
     ui_cursor.c
     ui_input.c

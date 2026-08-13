@@ -85,12 +85,6 @@ _Static_assert(2 * PIO_W * PIO_H <= UI_FB_BYTES,
 
 static uint8_t *page;   /* what the driver is scanning */
 static uint8_t *back;   /* what we are drawing */
-static int      s_video_base = 12;
-
-/* main() says where this board's video pins are, because the two HDMI
- * backends are told apart by nothing else. */
-void ui_video_pio_set_base(int base) { s_video_base = base; }
-int  ui_video_pio_base(void)         { return s_video_base; }
 
 /* Core 1 runs the scanline interrupt, as it does on every other video
  * path here. */
@@ -113,8 +107,14 @@ static bool pio_hdmi_init(void) {
     /* Only where HSTX cannot do the job. On a board wired to GP12-19 the
      * HSTX backend is better in every way - hardware TMDS rather than a
      * PIO program and a core - and it sits earlier in the table, so this
-     * refusing is what picks the right one. */
-    if (s_video_base < 32) return false;
+     * refusing is what picks the right one.
+     *
+     * Equality rather than `>= 32`, because HDMI_BASE_PIN is baked into
+     * the driver at compile time (see app/CMakeLists.txt) and 32 is the
+     * only base this image's copy can drive. The loose test was harmless
+     * while the PiZero was the only board above the HSTX pins; it stops
+     * being so as soon as a second one appears anywhere above them. */
+    if (ui_video_pin_base() != HDMI_BASE_PIN) return false;
 
     /* Two pages, both inside the borrowed buffer. It is a 640x480 4 bpp
      * screen - 153,600 bytes - and a page here is 320x240 at 8 bpp, so

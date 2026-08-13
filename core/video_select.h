@@ -14,13 +14,22 @@
  *   1. a key held during the boot window   H / V / C / A
  *   2. the sticky choice in the FRANKID record
  *   3. -DFRANK_VIDEO=<hdmi|vga|composite>
- *   4. autodetect (video_detect.c)
- *   5. HDMI
+ *   4. the descriptor's video_default, where it declares one
+ *   5. autodetect (video_detect.c)
+ *   6. HDMI, or the board's only output if it has no HDMI
  *
  * The boot window exists because composite can never be autodetected and
  * oldskoolfrank's output is chosen by solder jumpers the firmware cannot
  * see. It is sticky because a window that has to be hit on every boot is
  * a tax on every boot; hitting it once per board is not.
+ *
+ * video_default sits above autodetect and not below it, which looks
+ * wrong until you ask what the detector can actually see. Where the
+ * connectors are separate, its verdict is a measurement and outranks any
+ * declaration; on oldskoolfrank both connectors hang off the same eight
+ * pins, so the verdict is the fleet rule with a probe's authority
+ * attached — and a board jumpered for VGA came up on a dark HDMI socket
+ * because of it. See board_desc.h.
  */
 #ifndef VIDEO_SELECT_H
 #define VIDEO_SELECT_H

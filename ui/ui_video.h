@@ -76,6 +76,23 @@ typedef struct {
  * does not, on a rig whose whole job is to be believed. */
 ui_surface_t *ui_video_surface(void);
 
+/* Where this board's eight video pins start, from the descriptor.
+ *
+ * Set once by main() before ui_video_open(), and the only thing that
+ * tells four backends apart. Three of them are pinned to particular
+ * silicon or particular compile-time constants: HSTX reaches GP12-19 and
+ * nowhere else, the composite driver is built for GP12-19, and each PIO
+ * backend is built for one base. So a backend whose base does not match
+ * this must refuse, and refusing is not a formality — on xt8086, GP12-19
+ * is the 8086's address bus, and an HSTX backend that came up anyway
+ * would clock video into a live CPU.
+ *
+ * It used to be ui_video_pio_set_base(), owned by the PIO HDMI backend
+ * and consulted by the HSTX one through an extern, which was the wrong
+ * home for a fact about the board rather than about a driver. */
+void ui_video_set_pin_base(int base);
+int  ui_video_pin_base(void);
+
 /* Bring up the best available backend for `mode`. Returns the mode
  * actually opened, which may differ: asking for VGA on a board wired
  * only for HDMI gets HDMI and says so. VIDEO_NONE means nothing came up.

@@ -175,10 +175,34 @@ static void tier1_probes(detect_result_t *r,
         }
     }
 
-    /* ---- I2C: DS3231 at 0x68, TLV320DAC3100 at 0x18 ---- */
+    /* ---- I2C: DS3231 at 0x68, TLV320DAC3100 at 0x18 ----
+     *
+     * Every candidate's bus, not just the first one's, and that used to
+     * be a `break` on the assumption that "every candidate with I2C uses
+     * GP28/29". xt8086 does not — its DS3231 is on GP38/39 — and with
+     * the break in place its RTC never answered, which vetoed the board
+     * out of its own identification.
+     *
+     * It stops at the first pair that *answers* rather than after the
+     * first pair it tries, and that is a safety property rather than an
+     * optimisation. Bit-banging a bus onto pins that are something else
+     * on this board drives them, and GP38/39 in particular are the
+     * ESP32's CHIP_PU and GPIO0 on frank_next — clocking those would
+     * reset its companion and could leave it in the ROM downloader. On a
+     * frank_next the RTC answers on GP28/29 first, so GP38/39 is never
+     * reached; the sweep only continues past a pair that had nothing on
+     * it, by which point the boards owning that pair are already ruled
+     * out by their own missing RTC. */
     for (unsigned c = 0; c < n; c++) {
         const frank_pins_t *p = &cands[c]->pins;
         if (p->i2c_sda == PIN_NC || p->i2c_scl == PIN_NC) continue;
+
+        /* The same pair appears in several descriptors; probe it once. */
+        bool seen = false;
+        for (unsigned e = 0; e < c && !seen; e++)
+            seen = cands[e]->pins.i2c_sda == p->i2c_sda &&
+                   cands[e]->pins.i2c_scl == p->i2c_scl;
+        if (seen) continue;
 
         i2c_bb_init((unsigned)p->i2c_sda, (unsigned)p->i2c_scl);
         r->i2c_ds3231 |= i2c_bb_probe((unsigned)p->i2c_sda,
@@ -186,7 +210,8 @@ static void tier1_probes(detect_result_t *r,
         r->i2c_tlv320 |= i2c_bb_probe((unsigned)p->i2c_sda,
                                       (unsigned)p->i2c_scl, 0x18);
         i2c_bb_release((unsigned)p->i2c_sda, (unsigned)p->i2c_scl);
-        break;   /* every candidate with I2C uses GP28/29 */
+
+        if (r->i2c_ds3231 || r->i2c_tlv320) break;
     }
 
     /* ---- 1-Wire: GP23 on frank_next, GP30 on megafrank ---- */
@@ -258,9 +283,18 @@ static bool tier1_consistent(const detect_result_t *r,
      *
      * Same reasoning as `flash_bytes = 0` meaning "lives on the module":
      * on a socketed board the module's memory is not a property of the
-     * board, and its presence is evidence about neither. This is what
-     * `pico_socket` was declared for, and until now nothing read it. */
-    if (!wants_qmi_psram && !d->pico_socket && r->psram_cs_found != PIN_NC &&
+     * board, and its presence is evidence about neither.
+     *
+     * Keyed on module_memory rather than pico_socket, which is what this
+     * first read and which is a narrower fact — "the header breaks out
+     * GP0-22 and GP26-28" — that happens to be true of the one board the
+     * exemption was written for. It is false of every PGA2350 carrier,
+     * and a Pimoroni PGA2350 carries 8 MB on GP47 just as a Plus 2 does.
+     * So on a real OldSkoolFRANK the module's own PSRAM vetoed
+     * oldskoolfrank, frank_pga and megafrank, and FRANK - the only board
+     * exempt - won by being the last one standing, then opened HDMI on a
+     * board jumpered for VGA. Measured on hardware, not inferred. */
+    if (!wants_qmi_psram && !d->module_memory && r->psram_cs_found != PIN_NC &&
         !(d->caps & CAP_PSRAM_SOFTSPI)) return false;
 
     if ((bool)(d->caps & CAP_RTC_DS3231)     != r->i2c_ds3231)   return false;

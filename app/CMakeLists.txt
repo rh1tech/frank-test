@@ -67,6 +67,13 @@ add_executable(frank-test
     ${FW_ROOT}/drivers/tlv320/tlv320.c
     ${FW_ROOT}/drivers/hdmi_pio/hdmi.c
     ${FW_ROOT}/drivers/hdmi_pio/hdmi_scanline.S
+
+    # ...and its VGA half, for xt8086, whose ladder is on GP30-37 where
+    # the HSTX cannot follow. One file, two halves, sharing PIO0,
+    # DMA_IRQ_0 and conv_color[]; SELECT_VGA picks which one runs, and
+    # only one video backend is ever brought up.
+    ${FW_ROOT}/drivers/hdmi_pio/vga.c
+
     ${FW_ROOT}/tests/tests_memory.c
     ${FW_ROOT}/tests/tests_board.c
     ${FW_ROOT}/tests/tests_psram_spi.c
@@ -132,8 +139,6 @@ target_include_directories(frank-test PRIVATE
 # Pairs with set_sys_clock_khz(252000) in main(): clk_hstx = clk_sys/2 =
 # 126 MHz, which is what 640x480@60 TMDS needs. ui_video_hstx.c also
 # forces it, so this is belt and braces rather than the only guard.
-# The PIO HDMI driver's pin layout, which it selects at compile time.
-#
 # PLATFORM_Z0 is murmnes' name for the Waveshare PiZero and picks data
 # lanes first, clock last, BGR order and non-inverted differential pairs.
 # Every other board it supports is the opposite on all four counts, and
@@ -141,15 +146,28 @@ target_include_directories(frank-test PRIVATE
 # this produced a correctly-opened backend driving the wrong pins in the
 # wrong order, which looks exactly like a dead output.
 #
-# Scoped to the driver's own sources rather than set for the whole image.
-# HDMI_BASE_PIN is not a name only this driver uses - Core 2U's board
-# header defines it too, for the HSTX connector - so a target-wide value
-# collided with it and the A build said so. Only drivers/hdmi_pio reads
-# these, so this is where they belong.
+# Scoped to the driver's own sources, because only the driver reads it.
+#
+# HDMI_BASE_PIN and VGA_BASE_PIN used to be set here too, and are now in
+# drivers/hdmi_pio/hdmi.h instead: ui/ui_video_pio_hdmi.c and
+# ui/ui_video_pio_vga.c compare the detected board's video base against
+# them to decide whether to take the board, and they are in a different
+# CMake target. A definition scoped to the driver left those two
+# comparing against the header's default and taking boards the driver was
+# not compiled for.
 set_source_files_properties(
     ${FW_ROOT}/drivers/hdmi_pio/hdmi.c
     ${FW_ROOT}/drivers/hdmi_pio/hdmi_scanline.S
-    PROPERTIES COMPILE_DEFINITIONS "PLATFORM_Z0=1;HDMI_BASE_PIN=32")
+    PROPERTIES COMPILE_DEFINITIONS "PLATFORM_Z0=1")
+
+# The VGA half writes `a & b | c` throughout, which is correct and which
+# -Wparentheses does not like. Silenced here rather than by adding
+# brackets to a vendored file: eight warnings that will never be acted on
+# are eight places for a real one to hide, and the alternative is a diff
+# against upstream that makes the next update harder to take.
+set_source_files_properties(
+    ${FW_ROOT}/drivers/hdmi_pio/vga.c
+    PROPERTIES COMPILE_FLAGS "-Wno-parentheses")
 
 target_compile_definitions(frank-test PRIVATE
     MODE_HSTX_CLK_DIV=2

@@ -91,9 +91,14 @@ static bool hstx_init(void) {
      * routes it to GP12-19 and nowhere else, so a board wired anywhere
      * else gets TMDS clocked into pins joined to nothing and a dark
      * socket - which is what the Waveshare PiZero did before the PIO
-     * backend existed to take it. */
-    extern int ui_video_pio_base(void);
-    if (ui_video_pio_base() >= 32) return false;
+     * backend existed to take it.
+     *
+     * The test was `>= 32`, which is the PiZero's base and was written
+     * as though that were the only other place video could be. xt8086's
+     * is 30, so it passed - and GP12-19 there are not joined to nothing,
+     * they are the 8086's AD12-A19. Exact equality is the honest test:
+     * this backend serves the fleet's base and no other. */
+    if (ui_video_pin_base() != 12) return false;
 
 #if PICO_RP2040
     /* No HSTX on this part. Not a fault — the caller tries the next

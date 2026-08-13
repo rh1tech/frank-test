@@ -162,6 +162,17 @@ static void __not_in_flash_func(tv_core1_run)(void) {
 }
 
 static bool tv_init(void) {
+    /* The driver's TV_BASE_PIN is a compile-time constant and it is 12,
+     * so this backend is as pinned to GP12-19 as the HSTX ones are.
+     * Spelled out here rather than included, for the same reason the
+     * externs above are: this file does not take the driver's header.
+     *
+     * Composite is also the last entry in the backend table, which makes
+     * it what ui_video_open()'s second pass falls back to when the mode
+     * asked for could not be served - and on xt8086 that fallback would
+     * have put a PAL waveform on the 8086's address bus. */
+    if (ui_video_pin_base() != 12) return false;
+
     extern uint8_t *ui_video_front_bits(void);
     ui_video_surface();
     fb_bits = ui_video_front_bits();

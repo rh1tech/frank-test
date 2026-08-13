@@ -121,8 +121,9 @@ static void publish_textpage(const dlg_ctx_t *c, audio_src_t src, int ch,
     snprintf(s_tp_title, sizeof(s_tp_title), "Audio - %s",
              audio_src_name(src));
     snprintf(s_tp_line[0], sizeof(s_tp_line[0]),
-             audio_src_passes(src) > 1 ? "Playing: %s channel" : "Playing: %s",
-             audio_channel_name(src, ch));
+             audio_src_passes(c->detect, src) > 1 ? "Playing: %s channel"
+                                                 : "Playing: %s",
+             audio_channel_name(c->detect, src, ch));
     snprintf(s_tp_line[1], sizeof(s_tp_line[1]), "Passes: %u", laps);
 
     int n = 2;
@@ -142,7 +143,7 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
     c->paint_background();
 
     const char *hint   = audio_src_hint(c->detect, src);
-    const int   passes = audio_src_passes(src);
+    const int   passes = audio_src_passes(c->detect, src);
 
     /* One line of body per thing worth saying, and no fixed height: an
      * empty band under a two-line message reads as a layout mistake
@@ -178,7 +179,7 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
     {
         char line[32];
         snprintf(line, sizeof(line), passes > 1 ? "%s channel" : "%s",
-                 audio_channel_name(src, ch));
+                 audio_channel_name(c->detect, src, ch));
         ui_text_big(s, cx + 28, cy + 16, line, UI_BLACK);
     }
 
@@ -192,7 +193,7 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
         const int py = cy + 42;
         const bool live = (i == ch);
         ui_plate(s, px, py, 84, 16, live ? UI_ACCENT : UI_GREY_1);
-        ui_text_centred(s, px, py + 4, 84, audio_channel_name(src, i),
+        ui_text_centred(s, px, py + 4, 84, audio_channel_name(c->detect, src, i),
                         live ? UI_WHITE : UI_GREY_5);
     }
 
@@ -246,7 +247,7 @@ static void draw(const dlg_ctx_t *c, audio_src_t src, int ch, unsigned laps) {
 void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
     if (!audio_src_available(c->detect, src)) return;
 
-    const int passes = audio_src_passes(src);
+    const int passes = audio_src_passes(c->detect, src);
 
     printf("[audio] %s: looping %s\n", audio_src_name(src),
            passes > 1 ? "L/R/C" : "mono");
@@ -269,7 +270,7 @@ void dlg_audio(const dlg_ctx_t *c, audio_src_t src) {
              * path can detect one, so this is rare and specific rather
              * than a general failure route. */
             printf("[audio] %s stalled on the %s channel\n",
-                   audio_src_name(src), audio_channel_name(src, ch));
+                   audio_src_name(src), audio_channel_name(c->detect, src, ch));
             break;
         }
 

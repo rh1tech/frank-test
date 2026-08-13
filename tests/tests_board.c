@@ -373,6 +373,7 @@ static pinmask_t claimed_pins(const frank_board_desc_t *b) {
     claim(&m, p->sd_clk);       claim(&m, p->sd_cmd);
     claim(&m, p->sd_dat1);      claim(&m, p->sd_dat2);
     claim(&m, p->i2s_data);     claim(&m, p->i2s_mclk);
+    claim(&m, p->speaker);
     claim_run(&m, p->i2s_clk_base, 2);
     claim_run(&m, p->video_base, 8);
     claim(&m, p->psram_cs);
@@ -381,6 +382,7 @@ static pinmask_t claimed_pins(const frank_board_desc_t *b) {
     claim(&m, p->led_ws2812);   claim(&m, p->led_plain);
     claim(&m, p->esp_uart_tx);  claim(&m, p->esp_uart_rx);
     claim(&m, p->esp_chip_pu);  claim(&m, p->esp_gpio0);
+    claim(&m, p->esp_gpio2);
     claim(&m, p->esp_spi_miso); claim(&m, p->esp_spi_cs);
     claim(&m, p->esp_spi_sck);  claim(&m, p->esp_spi_mosi);
     claim(&m, p->esp_hs);       claim(&m, p->esp_ready);
@@ -396,6 +398,16 @@ static pinmask_t claimed_pins(const frank_board_desc_t *b) {
     claim_run(&m, p->link_b_data, 10);
     claim(&m, p->link_fs);      claim(&m, p->link_db_out);
     claim(&m, p->link_db_in);
+
+    /* The host CPU bus, where there is one.
+     *
+     * This is the only claim here made to stop a test running rather
+     * than to record that a pin has a job. Everything else on this list
+     * is claimed because some other test already drives it and testing
+     * it twice proves nothing; GP0-29 on xt8086 are claimed because the
+     * sweep below drives a pin low and watches its neighbour, and on
+     * that board the neighbour is a 5 V CPU's address bus. */
+    claim_run(&m, p->host_bus_base, p->host_bus_len);
 
     /* A Pico-form-factor socket breaks out GP0-GP22 and GP26-GP28 only,
      * and driving GP23 — the module's SMPS mode pin — to discover that is

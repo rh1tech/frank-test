@@ -8,16 +8,17 @@
 #
 # release.sh — build the release UF2s and stamp the version.
 #
-# Two images come out of this, and both are needed to test a Core 2 or a
-# Core 2U completely:
+# Four images come out of this:
 #
 #   rp2350a  the test firmware for the 30-GPIO package
 #   rp2350b  the test firmware for the 48-GPIO package
+#   xt8086   the same program again, for the one board whose console and
+#            microSD are not where the rest of the fleet's are
 #   slave    the link peer. The inter-processor link cannot be tested from
 #            one end: "Processor link" and "Slave reset" report no answer
 #            unless the other chip is running this.
 #
-# The first two are the same program. Which one a board takes depends
+# The first three are the same program. Which one a board takes depends
 # only on the silicon in it, and the README has the table.
 #
 # Usage: ./release.sh [VERSION]
@@ -100,7 +101,8 @@ build_one() {
     fi
 }
 
-# Three images, and the split is by silicon rather than by board.
+# Four images, and the split is by silicon rather than by board — with
+# one exception, which is what the fourth is.
 #
 # The test firmware is one program: it works out which board it is on at
 # run time, so the only thing a build has to get right is the package.
@@ -109,6 +111,14 @@ build_one() {
 # — it hard-faults on the first access to a GPIO the package does not
 # have — so the names say the package, not a board.
 #
+# xt8086 is the exception, and not because it does anything differently
+# at run time: everything peculiar about that board is in its descriptor,
+# as it should be. What a board header decides, and detection cannot, is
+# where the console UART goes — and frank_b's answer is GP0/GP1, which on
+# xt8086 are the 8086's AD0 and AD1. An rp2350b image on that board would
+# put every printf on two lines of a live CPU's address bus, so it gets
+# an image whose console is on GP44/GP45 where its header is.
+#
 # The slave image is a different program: the link peer that the Core 2
 # and Core 2U masters talk to. It is RP2350A, but it is listed separately
 # because you flash it for a different reason.
@@ -116,6 +126,8 @@ build_one "rp2350a" app   app/build-rel-a   frank_a \
           frank-test           "frank-test_${VERSION_US}_rp2350a.uf2"
 build_one "rp2350b" app   app/build-rel-b   frank_b \
           frank-test           "frank-test_${VERSION_US}_rp2350b.uf2"
+build_one "xt8086"  app   app/build-rel-xt  frank_xt8086 \
+          frank-test           "frank-test_${VERSION_US}_xt8086.uf2"
 build_one "slave"   slave slave/build-release frank_core2u_slave \
           frank-core2u-slave   "frank-test_${VERSION_US}_slave.uf2"
 

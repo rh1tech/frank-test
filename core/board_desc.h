@@ -21,6 +21,7 @@
 #define BOARD_DESC_H
 
 #include "frank_caps.h"
+#include "video_mode.h"
 
 #define PIN_NC  (-1)
 
@@ -59,6 +60,12 @@ typedef struct {
      * present where the codec needs a master clock. */
     int8_t i2s_data, i2s_clk_base, i2s_mclk;
 
+    /* A bare PWM pin into a speaker. Mono, no DAC, no mux — see
+     * CAP_AUDIO_PWM. Set only where the board has no I2S at all; the
+     * boards that do have I2S reach PWM through the audio mux on the
+     * I2S pins instead. */
+    int8_t speaker;
+
     /* Where I2S comes out when the PCM5122 hat is fitted, which is not
      * where it comes out otherwise: the hat occupies its own pins and
      * the onboard pair above goes to whatever the board already had.
@@ -82,12 +89,22 @@ typedef struct {
 
     /* Companion processors.
      *
-     * esp_chip_pu / esp_gpio0 are PIN_NC on every ESP-01S board: those
-     * lines go to buttons, not to GPIOs. Only frank_next can reset its
-     * companion in firmware. Detection has to account for that — see
-     * detect.c. */
+     * esp_chip_pu is PIN_NC on every ESP-01S board: CH_PD goes to a
+     * button, or on oldskoolfrank to nothing at all. Only frank_next can
+     * reset its companion in firmware, and detection has to account for
+     * that — see detect.c.
+     *
+     * esp_gpio0 and esp_gpio2 are a separate question and the answer is
+     * not the same. This said they were PIN_NC on every ESP-01S board
+     * too, which was true of the boards looked at when it was written
+     * and is not true of oldskoolfrank: both its strapping pins come
+     * back to GP24 and GP23 through 1K, each with a 10K pull-up of its
+     * own. Reaching the straps is still not the same as being able to
+     * reset the part — without CH_PD or RST there is no way to make it
+     * sample them — so this remains a record of what is wired rather
+     * than a capability. */
     int8_t esp_uart_tx, esp_uart_rx;
-    int8_t esp_chip_pu, esp_gpio0;
+    int8_t esp_chip_pu, esp_gpio0, esp_gpio2;
     int8_t esp_spi_miso, esp_spi_cs, esp_spi_sck, esp_spi_mosi;
     int8_t esp_hs, esp_ready;
     int8_t esp_mux_sel;          /* 74HC4052 S0, frank_next only */
@@ -118,6 +135,33 @@ typedef struct {
 
     /* Config DIP / jumper block, where one is readable. */
     int8_t dip;
+
+    /* The host CPU bus, as one contiguous run.
+     *
+     * On xt8086 the RP2350 is the whole chipset for a real 8086: GP0-15
+     * are AD0-15, GP16-19 are A16-19, GP20-26 are ALE, RD, WR, INTA,
+     * M/IO, BHE and INTR, GP27 is the D input of the READY flip-flop,
+     * GP28 is RESET and GP29 is the CPU's clock. Thirty pins, no gaps.
+     *
+     * Named as a run rather than as thirty fields because nothing here
+     * addresses those lines individually — what the firmware needs to
+     * know is which pins belong to the CPU and must not be driven by
+     * anything else. tests_board.c's short sweep reads exactly this;
+     * without it, that test would drive a live CPU's address bus one
+     * pair at a time. The per-line detail lives in docs/pinouts.txt,
+     * where it came from. */
+    int8_t  host_bus_base;
+    uint8_t host_bus_len;
+
+    /* The three lines inside that run which firmware may drive on
+     * purpose: the CPU's clock, its reset, and the wait-state flip-flop.
+     *
+     * With no clock the 8086 executes nothing and its bus stays in the
+     * high-impedance state it powers up in, which is why this firmware
+     * leaves all three alone and the board tests as a peripheral
+     * carrier. They are recorded so that a test which does want to start
+     * the CPU has the pins from the netlist rather than from memory. */
+    int8_t  host_clk, host_reset, host_ready;
 
     /* Inter-processor link (core2 / core2u only). Both buses share the
      * layout the PIO programs rely on: clk == data_base + 8,
@@ -169,7 +213,69 @@ typedef struct {
      * and OldSkoolFRANK all use pins above GP28, so of the socketed
      * boards only FRANK is one of these. */
     bool               pico_socket;
+
+    /* True when the MCU arrives on a module that brings its own flash
+     * and PSRAM, so finding memory says nothing about the carrier.
+     *
+     * Split out of pico_socket, which was answering two questions at
+     * once and only one of them correctly. pico_socket means "the header
+     * breaks out GP0-22 and GP26-28 and nothing else", which the short
+     * scan reads and which is false for a PGA2350 carrier — a PGA2350
+     * exposes all 48 GPIOs. But a Pimoroni PGA2350 carries 8 MB of PSRAM
+     * on GP47 inside the module, exactly as a Pico Plus 2 does, so the
+     * "PSRAM answered on a board that declares none" veto has to exempt
+     * it for the same reason.
+     *
+     * Keying that veto on pico_socket alone is how a real OldSkoolFRANK
+     * came to report itself as a FRANK: its module's PSRAM vetoed
+     * oldskoolfrank, frank_pga and every other PGA descriptor, and FRANK
+     * — the one board exempt — was the only thing left standing. It then
+     * opened HDMI on a board jumpered for VGA.
+     *
+     * The module's memory is still tested: detection measures what is
+     * actually on the bus and registry_detected_caps() turns that into a
+     * capability, which is the same route by which a Plus 2's PSRAM gets
+     * exercised in a FRANK socket. */
+    bool               module_memory;
+
     frank_pins_t       pins;
+
+    /* Which output to bring up when nobody has said otherwise.
+     *
+     * VIDEO_AUTO — the zero, so a descriptor that says nothing gets the
+     * fleet rule — means "HDMI if this board has it, else whatever it
+     * does have". That rule is right for every board whose connectors
+     * are distinguishable, and wrong for oldskoolfrank, where HDMI and
+     * VGA are the same eight pins and which one is live is decided by
+     * three solder jumpers. The detector cannot see a solder jumper, so
+     * on that board its HDMI verdict is not a measurement — it is the
+     * fleet rule wearing a measurement's clothes, and a board that ships
+     * jumpered for VGA came up on a socket with nothing in it.
+     *
+     * Set this only where the board itself knows better than the probe.
+     * It outranks autodetect and is outranked by every deliberate
+     * choice: the boot window, a mode the running firmware asked for
+     * before restarting, and -DFRANK_VIDEO. */
+    frank_video_mode_t video_default;
+
+    /* This board's I2S DAC calls the two halves of the frame the other
+     * way round, so the firmware has to swap them to be believed.
+     *
+     * Not a wiring fact — the netlist was traced end to end and
+     * oldskoolfrank's is conventional: U7's IOL reaches the jack's tip
+     * through U6B and IOR reaches the ring through U6A, and on a TRS
+     * jack tip is left. The difference is the part. The fleet's TDA1387
+     * is I2S, where word select low selects the left channel; the
+     * TDA1545A takes the older simultaneous/EIAJ convention, where it
+     * selects the right. Same bitstream, opposite speakers.
+     *
+     * Applied where the frame is composed rather than by rewriting
+     * i2s_tone()'s packing, which is correct for I2S and was got wrong
+     * once already — see the comment there for how the halves were
+     * established. Swapping the labels at the source keeps that
+     * reasoning true and confines the exception to the board that has
+     * the part. */
+    bool               i2s_lr_swapped;
 
     /* Tier 2 fingerprint: the pins whose passive state distinguishes
      * this board from the others in its MCU class, and nothing more.

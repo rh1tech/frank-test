@@ -55,6 +55,7 @@ typedef enum {
     FRANK_BOARD_CORE2,            /* RP2350B + RP2350A, U revision too  */
     FRANK_BOARD_NEXT,             /* RP2350B + ESP32                    */
     FRANK_BOARD_Z0PA,             /* Waveshare RP2350-PiZero            */
+    FRANK_BOARD_XT8086,           /* RP2350B chipset for a real 8086    */
 
     FRANK_BOARD_COUNT
 } frank_board_id_t;
@@ -145,6 +146,26 @@ typedef uint64_t frank_caps_t;
  * identification. This says only that the connector and the pins exist,
  * which is true whether or not anything is plugged into them. */
 #define CAP_AUDIO_PCM5122        (1ull << 31)
+
+/* A single PWM pin into a speaker, a jack and a buzzer — no DAC, no mux
+ * and no second channel.
+ *
+ * Deliberately not CAP_AUDIO_MUX, which is what the PWM path used to be
+ * gated on because until now PWM only ever existed as one of the four
+ * inputs of megafrank's 74HC4052. On xt8086 there is no mux to set and
+ * nothing to select: the pin is the output. Gating on the mux would have
+ * hidden the only sound the board can make behind hardware it does not
+ * have, and printed switch positions for switches that are not there. */
+#define CAP_AUDIO_PWM            (1ull << 32)
+
+/* A host CPU on the other side of the GPIOs.
+ *
+ * xt8086 is not a peripheral board with an MCU on it — it is a real 8086
+ * whose entire chipset is the RP2350, so thirty GPIOs are a CPU bus and
+ * not spare pins. The capability exists so the report can say so, and so
+ * the pin-short sweep can be told to keep its hands off; see
+ * `host_bus_base` in board_desc.h. */
+#define CAP_HOST_8086            (1ull << 33)
 
 /* Any video output at all — convenience mask, not a bit of its own. */
 #define CAP_VIDEO_ANY  (CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE)

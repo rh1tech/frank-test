@@ -20,8 +20,18 @@
 
 /* --- HDMI pin configuration --- */
 
+/* 32, not upstream's 12, because in frank-test this driver exists only
+ * for the board HSTX cannot reach — the Waveshare PiZero, whose HDMI is
+ * on GP32-39. A build on GP12-19 would be served by the HSTX backend
+ * instead and never reach this file.
+ *
+ * It lives here rather than in a compile definition on the driver's
+ * sources, which is where it started, because ui/ui_video_pio_hdmi.c has
+ * to compare the detected board's base against it and is in a different
+ * CMake target. Two definitions of the same pin, one per target, is how
+ * a backend comes up on pins the driver is not driving. */
 #ifndef HDMI_BASE_PIN
-#define HDMI_BASE_PIN (12)
+#define HDMI_BASE_PIN (32)
 #endif
 
 #ifndef PIO_VIDEO
@@ -55,8 +65,15 @@
 
 /* --- VGA pin configuration (shared PIO/DMA — only one active) --- */
 
+/* Eight consecutive pins, B0 B1 G0 G1 R0 R1 HS VS upward — the same
+ * byte drivers/pico_vga builds for the HSTX.
+ *
+ * 30, not upstream's 12, and for the same reason HDMI_BASE_PIN is 32:
+ * the only board in the fleet whose VGA ladder is out of the HSTX's
+ * reach is xt8086, whose is on GP30-37. Everything else is on GP12-19
+ * and gets the HSTX backend. */
 #ifndef VGA_BASE_PIN
-#define VGA_BASE_PIN (12)
+#define VGA_BASE_PIN (30)
 #endif
 
 #define PIO_VGA pio0
@@ -121,6 +138,13 @@ struct video_mode_t graphics_get_video_mode(int mode);
 /* VGA-specific setup (only used when SELECT_VGA) */
 void graphics_set_offset(const int x, const int y);
 void graphics_set_mode_vga(enum graphics_mode_t mode);
+void graphics_set_flashmode(const bool flash_line, const bool flash_frame);
+
+/* Frames the VGA scanline ISR has finished. The VGA counterpart of
+ * hdmi_frame_count, and read for the same reason: the Video output test
+ * needs evidence that the wire is being driven, not that a repaint
+ * happened. */
+extern volatile uint32_t vga_pio_frame_count;
 
 /* Global buffer dimensions - set before calling graphics_init() */
 extern int graphics_buffer_width;
