@@ -81,37 +81,53 @@ static uint8_t g_ctrl_rx[LINK_CTRL_BYTES] __attribute__((aligned(4)));
 static uint8_t g_bulk_tx[LINK_BULK_BYTES] LINK_BULK_ALIGN;
 static uint8_t g_bulk_rx[LINK_BULK_BYTES] LINK_BULK_ALIGN;
 
-#if SLAVE_RESET_BODGE
-/* Optional hardware reset of the slave.
+/* Hardware reset of the slave, where the board has the net for it.
  *
- * This revision's GPIO43 -> slave RUN net is broken (see README), but the
- * two ends are both accessible pads: R3 pin 1 sits on the GPIO43 net and
- * S4 pin 1 sits on the slave's RUN net, so one wire restores the link.
- * Build with -DSLAVE_RESET_BODGE=ON once that wire is in.
+ * -1 when it does not, which is every board but FRANK Next. The Core 2
+ * schematic draws GPIO43 to the slave's RUN and the copper is not there;
+ * both ends are accessible pads, though — R3 pin 1 sits on the GPIO43
+ * net and S4 pin 1 on the slave's RUN net — so one wire restores it, and
+ * -DSLAVE_RESET_BODGE=ON declares that the wire is in.
  *
  * The pin is driven open-drain and NEVER driven high: to assert reset we
  * turn it into a low output, to release we return it to an input and let
- * R3's 10K pull-up do the work. Driving it high would fight S4 — which
- * shorts RUN to ground — and put the whole pin drive current through the
- * button every time somebody pressed it.
+ * the 10K pull-up do the work. Driving it high would fight the reset
+ * button — which shorts RUN to ground — and put the whole pin drive
+ * current through it every time somebody pressed it.
  *
  * Idle state is therefore also the safe state: at power-on, before any
  * firmware runs, the pin is an input and the slave is released. */
-static void slave_reset_pin_init(void) {
-    gpio_init(M_LINK_SLAVE_RUN);
-    gpio_put(M_LINK_SLAVE_RUN, 0);          /* output register stays 0 */
-    gpio_set_dir(M_LINK_SLAVE_RUN, GPIO_IN);/* ...but Hi-Z until we assert */
+static int g_run_pin = -1;
+
+static void slave_reset_pin_init(int pin) {
+    g_run_pin = pin;
+    if (g_run_pin < 0) return;
+
+    gpio_init((uint)g_run_pin);
+    gpio_put((uint)g_run_pin, 0);           /* output register stays 0 */
+    gpio_set_dir((uint)g_run_pin, GPIO_IN); /* ...but Hi-Z until we assert */
 }
 
+static void slave_reset_assert(void) {
+    gpio_set_dir((uint)g_run_pin, GPIO_OUT);    /* pull RUN low */
+}
+
+static void slave_reset_release(void) {
+    gpio_set_dir((uint)g_run_pin, GPIO_IN);     /* release to the pull-up */
+}
+
+/* Long enough for an RP2350 to notice — it needs microseconds — and
+ * short enough to stay a pulse rather than a hold. The reset test below
+ * asserts for far longer than this on purpose. */
 static void slave_reset_pulse(void) {
-    gpio_set_dir(M_LINK_SLAVE_RUN, GPIO_OUT);   /* pull RUN low */
-    sleep_ms(2);                                 /* RP2350 needs microseconds */
-    gpio_set_dir(M_LINK_SLAVE_RUN, GPIO_IN);    /* release to the pull-up */
+    if (g_run_pin < 0) return;
+    slave_reset_assert();
+    sleep_ms(2);
+    slave_reset_release();
     sleep_ms(5);
 }
-#endif
 
-void diag_link_init(void) {
+void diag_link_init(int slave_run_pin) {
     link_init(&g_link, LINK_PIO,
               M_LINK_A_DATA_BASE,   /* we transmit on bus A */
               M_LINK_B_DATA_BASE,   /* we receive on bus B  */
@@ -131,9 +147,13 @@ void diag_link_init(void) {
     g_session.seq     = 0;
     g_session.handshake_timeout_us = 0;
 
+    /* The bodge overrides an absent net, not a present one: a board that
+     * names its own RUN pin is describing copper, and a build flag
+     * should not be able to contradict it. */
 #if SLAVE_RESET_BODGE
-    slave_reset_pin_init();
+    if (slave_run_pin < 0) slave_run_pin = M_LINK_SLAVE_RUN;
 #endif
+    slave_reset_pin_init(slave_run_pin);
 }
 
 /* Ask the slave to switch to `q88` and follow it there. The slave
@@ -343,6 +363,11 @@ void diag_link_run(diag_link_result_t *out) {
  * without making a genuinely absent slave slow to notice. */
 #define RECONNECT_BACKOFF_TICKS 3
 
+/* And after a RUN pulse, which is a cold boot: the slave runs its USB
+ * wait and its eight-step attach window before it serves anything, so
+ * the master has to sit out roughly nine seconds rather than two. */
+#define RECONNECT_BACKOFF_TICKS_COLD 4
+
 bool diag_link_try_reconnect(void) {
     static uint32_t fails;
     static uint32_t backoff;
@@ -391,12 +416,18 @@ bool diag_link_try_reconnect(void) {
         backoff = RECONNECT_BACKOFF_TICKS;
     }
 
-#if SLAVE_RESET_BODGE
-    if ((fails % 4) == 0) {
+    /* The bottom rung, and it needs a longer backoff than the one above
+     * it. An FS reboot goes through the watchdog, so the slave knows it
+     * was asked and skips its console-attach window; a RUN pulse is a
+     * cold start and it cannot know, so it waits out the whole window
+     * before it serves anything. Re-probing on the FS schedule would
+     * reset it again while it was still counting, which is the reboot
+     * loop the slave's own boot comment warns about — seen from the
+     * other end. */
+    if (g_run_pin >= 0 && (fails % 4) == 0) {
         slave_reset_pulse();
-        backoff = RECONNECT_BACKOFF_TICKS;
+        backoff = RECONNECT_BACKOFF_TICKS_COLD;
     }
-#endif
 
     return false;
 }
@@ -446,6 +477,78 @@ bool diag_link_reset_slave(void) {
     }
     link_log("reset: slave did not come back");
     return false;
+}
+
+/* How long to hold RUN low before believing the slave has gone quiet.
+ *
+ * Sized by the probe rather than by the part: an RP2350 is in reset
+ * within microseconds of RUN going low, but proving it stopped answering
+ * means asking, and slave_answers() spends up to 200 ms on the doorbell.
+ * Two probes inside the hold, so a single unlucky timeout cannot pass
+ * for a slave that is actually still running. */
+#define HARD_RESET_PROBES 2
+
+/* And how long to wait for it afterwards.
+ *
+ * Much longer than the FS path's ten seconds, because this is a cold
+ * boot: watchdog_caused_reboot() is false, so the slave takes the branch
+ * it skips on an FS reboot — up to 3 s waiting for USB CDC, then 100 ms,
+ * then eight 250 ms attach-window steps — and only then brings the link
+ * up and runs its self-test. Call it seven seconds of boot before it can
+ * answer anything, and fifteen leaves room for a slower build without
+ * being long enough that a genuinely dead slave holds the run up. */
+#define HARD_RESET_RETURN_MS 15000u
+
+diag_reset_t diag_link_hard_reset_slave(void) {
+    if (g_run_pin < 0) return DIAG_RESET_NO_PIN;
+
+    if (!slave_answers()) {
+        link_log("hard reset: slave not answering to begin with");
+        return DIAG_RESET_ABSENT;
+    }
+
+    link_log("hard reset: slave alive, holding GP%d low...", g_run_pin);
+    slave_reset_assert();
+
+    /* The part that the FS test cannot do: ask while the pin is held.
+     * An answer here is not a slow reset, it is a pin that does not
+     * arrive — the slave is running normally because nothing reached
+     * its RUN.
+     *
+     * Every probe has to answer before that accusation is made, not just
+     * one. A slave held in reset leaves the whole bus high-impedance,
+     * and the master is then reading floating pins: the odds of noise
+     * decoding as a well-formed HELLO_ACK are small but they are not
+     * zero, and the cost of getting it wrong is telling somebody their
+     * board has an open net when it does not. One silence is proof it
+     * went quiet; it takes unbroken answers to prove it never did. */
+    unsigned answered = 0;
+    for (int i = 0; i < HARD_RESET_PROBES; i++)
+        if (slave_answers()) answered++;
+
+    if (answered == HARD_RESET_PROBES) {
+        slave_reset_release();
+        link_log("hard reset: answered with GP%d held low - "
+                 "the net does not reach the slave", g_run_pin);
+        return DIAG_RESET_HELD_ALIVE;
+    }
+
+    link_log("hard reset: quiet while held; releasing");
+    slave_reset_release();
+
+    absolute_time_t t0 = get_absolute_time();
+    const absolute_time_t deadline = make_timeout_time_ms(HARD_RESET_RETURN_MS);
+    while (absolute_time_diff_us(get_absolute_time(), deadline) > 0) {
+        if (slave_answers()) {
+            int64_t ms = absolute_time_diff_us(t0, get_absolute_time()) / 1000;
+            link_log("hard reset: slave back after %u ms", (unsigned)ms);
+            return DIAG_RESET_OK;
+        }
+        sleep_ms(100);
+    }
+
+    link_log("hard reset: slave did not come back");
+    return DIAG_RESET_NO_RETURN;
 }
 
 /* diag_link_render() is gone: the registry owns the display. */

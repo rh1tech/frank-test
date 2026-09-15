@@ -89,10 +89,14 @@ typedef struct {
 
     /* Companion processors.
      *
-     * esp_chip_pu is PIN_NC on every ESP-01S board: CH_PD goes to a
-     * button, or on oldskoolfrank to nothing at all. Only frank_next can
-     * reset its companion in firmware, and detection has to account for
-     * that — see detect.c.
+     * esp_chip_pu is PIN_NC on every board in the fleet: CH_PD goes to a
+     * button, or on oldskoolfrank to nothing at all. The first FRANK Next
+     * was the one exception — its ESP32 had CHIP_PU and GPIO0 on real
+     * GPIOs — and the second replaced that part with an ESP8266EX whose
+     * reset and strapping go to buttons and to the CH343P's DTR/RTS pair,
+     * the same arrangement as the rest of the fleet. The field is kept
+     * because "no board can reset its companion" is a fact worth being
+     * able to state, rather than one left implicit in its absence.
      *
      * esp_gpio0 and esp_gpio2 are a separate question and the answer is
      * not the same. This said they were PIN_NC on every ESP-01S board
@@ -103,20 +107,22 @@ typedef struct {
      * reset the part — without CH_PD or RST there is no way to make it
      * sample them — so this remains a record of what is wired rather
      * than a capability. */
+    /* On frank_next these are the console UART's own pins. The 8266
+     * hangs off the same pair through the U26 mux, so talking to the
+     * companion means borrowing the console — see tests_esp.c. */
     int8_t esp_uart_tx, esp_uart_rx;
     int8_t esp_chip_pu, esp_gpio0, esp_gpio2;
-    int8_t esp_spi_miso, esp_spi_cs, esp_spi_sck, esp_spi_mosi;
-    int8_t esp_hs, esp_ready;
-    int8_t esp_mux_sel;          /* 74HC4052 S0, frank_next only */
 
     /* Gamepads. NES/SNES shift registers share latch+clock; DB9 is the
      * Atari-style direct-wired variant on oldskoolfrank. */
     int8_t pad_latch, pad_clk, pad_d1, pad_d2;
 
-    /* Tape input, via a CD4069 used as a squaring comparator. GP22 on
-     * every board that has it except the Core 2U revision (GP45). On frank, megafrank
-     * and minifrank the connection is gated by a config DIP — the pin is
-     * only the tape input when the switch is closed. */
+    /* Tape input, through something used as a squaring comparator: a
+     * CD4069 on most of the fleet, a single BC850 on frank_next. GP22 on
+     * every board that has it except the Core 2U revision (GP45) and
+     * frank_next (GP44). On frank, megafrank and minifrank the connection
+     * is gated by a config DIP — the pin is only the tape input when the
+     * switch is closed. */
     int8_t tape_in;
 
     /* I2C — DS3231 RTC and, on frank_next, the TLV320 codec. */
@@ -168,6 +174,19 @@ typedef struct {
      * valid == data_base + 9. */
     int8_t link_a_data, link_b_data;
     int8_t link_fs, link_db_out, link_db_in;
+
+    /* The master's line into the slave's RUN, where the net exists.
+     *
+     * Only frank_next has one. The Core 2 master routes GP43 to the same
+     * place on the schematic and the net is absent on both revisions, so
+     * it stays PIN_NC there and FS is the reboot request instead.
+     *
+     * Recorded so that everything which drives pads for a living — the
+     * short sweep in tests_board.c, the signature probe in pinsig.c —
+     * can leave this one alone. Driving it low for ten microseconds is
+     * how both of them ask a question, and on this pin the answer is a
+     * slave that reboots in the middle of the test that was asking. */
+    int8_t link_run;
 } frank_pins_t;
 
 /* ------------------------------------------------------------------ */

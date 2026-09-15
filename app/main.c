@@ -890,6 +890,23 @@ static void test_progress(int permille, const char *status) {
     }
 }
 
+/* Anything that arrived while a run was in progress is not typing.
+ *
+ * run_all() never polls the keyboard, so bytes landing during it sit in
+ * the buffer until the loop reads them afterwards - and on a board whose
+ * console UART is shared with a peripheral, those bytes came from the
+ * peripheral rather than from a person. They then arrive as hotkeys all
+ * at once, the moment the run ends: a stale ESP reply pressing 'R' is
+ * how the board came to reboot itself thirty seconds into the link soak,
+ * which is nowhere near where the bytes were actually produced.
+ *
+ * The tests that borrow the UART drain it themselves. This is the
+ * backstop for every other way noise reaches the same buffer, and it
+ * costs nothing on a board where the console is only ever a console. */
+static void discard_console_input(void) {
+    while (getchar_timeout_us(0) != PICO_ERROR_TIMEOUT) { }
+}
+
 static void run_all(void) {
     registry_prepare(&g_results, &g_detect);
     redraw();
@@ -898,6 +915,7 @@ static void run_all(void) {
         printf("\n[run] board not identified - nothing run.\n"
                "      Board > Set Board (Alt+B) to choose one.\n");
         stdio_flush();
+        discard_console_input();
         return;
     }
 
@@ -939,6 +957,7 @@ static void run_all(void) {
            g_results.passed, g_results.failed, g_results.na, g_results.norun);
     print_help();
     stdio_flush();
+    discard_console_input();
 }
 
 /* Flash timing for the raised clock. Runs from SRAM, because it is
@@ -1221,14 +1240,34 @@ int main(void) {
      *   cmake -B bld -DPICO_BOARD=frank_b -DFRANK_FORCE_BOARD=<id> */
 #if defined(FRANK_FORCE_BOARD)
     {
-        const frank_board_desc_t *forced =
-            frank_board_desc((frank_board_id_t)FRANK_FORCE_BOARD, FRANK_ROLE_SINGLE);
+        /* The value is a descriptor's `slug`, not the enum's number.
+         * It was the number, which meant reading board_table.c and
+         * counting to discover that FRANK Next is 9 — a count that moves
+         * every time a board is added.
+         *
+         * The role is resolved rather than assumed, too. This asked for
+         * FRANK_ROLE_SINGLE, which is NULL for every master and slave
+         * descriptor, so forcing either half of a two-processor board
+         * printed "no such board" and silently kept autodetect's answer. */
+#define FRANK_FORCE_STR2(x) #x
+#define FRANK_FORCE_STR(x)  FRANK_FORCE_STR2(x)
+        const char *slug = FRANK_FORCE_STR(FRANK_FORCE_BOARD);
+        const frank_board_id_t fid = frank_board_from_slug(slug);
+        static const frank_role_t roles[] = {
+            FRANK_ROLE_SINGLE, FRANK_ROLE_MASTER, FRANK_ROLE_SLAVE,
+        };
+        const frank_board_desc_t *forced = NULL;
+        for (unsigned i = 0; !forced && i < count_of(roles); i++) {
+            const frank_board_desc_t *c = frank_board_desc(fid, roles[i]);
+            if (c && (c->mcu == g_detect.mcu || c->mcu == FRANK_MCU_ANY))
+                forced = c;
+        }
         if (forced) {
             printf("[detect] FRANK_FORCE_BOARD: posing as %s\n", forced->name);
             g_detect.board = forced;
         } else {
-            printf("[detect] FRANK_FORCE_BOARD=%d: no such board\n",
-                   FRANK_FORCE_BOARD);
+            printf("[detect] FRANK_FORCE_BOARD=%s: no such board for this MCU\n",
+                   slug);
         }
     }
 #endif

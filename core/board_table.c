@@ -22,23 +22,35 @@
  * they contradict what the board diagrams suggest:
  *
  *  1. GP22 is the tape input on every board that has one, except the
- *     Core 2U revision (GP45). On frank, megafrank and minifrank the CD4069 output does
+ *     Core 2U revision (GP45) and frank_next (GP44, and a BC850 doing
+ *     the squaring rather than a CD4069).
+ *     On frank, megafrank and minifrank the CD4069 output does
  *     not reach the MCU directly — a config switch bridges it onto GP22
  *     (JP1 6<->7, S1 9<->3, S2 1<->4 respectively). The pin is therefore
  *     only the tape input when the operator has closed that switch, which
  *     is what CAP_TAPE_DIP_GATED records.
  *
  *  2. Every audio mux, USB mux and amplifier-shutdown line in the fleet
- *     is driven by a physical switch or jumper, not by a GPIO — the sole
- *     exception being frank_next's ESP UART mux on GP30. Firmware cannot
- *     select those paths. The tests can only verify whichever path the
- *     switch currently selects, and the report has to tell the operator
- *     which switch to move. See `manual_note`.
+ *     is driven by a physical switch or jumper, not by a GPIO. Firmware
+ *     cannot select those paths. The tests can only verify whichever
+ *     path the switch currently selects, and the report has to tell the
+ *     operator which switch to move. See `manual_note`.
  *
- *  3. ESP-01S CH_PD and RST go to buttons on every board that carries
- *     one; no GPIO reaches them. The "pulse reset and watch for the ROM
- *     banner" probe only works on frank_next. Elsewhere the ESP has to be
- *     detected by talking to it (AT/OK) rather than by rebooting it.
+ *     There used to be one exception, frank_next's ESP UART mux on GP30.
+ *     The second design keeps the 74HC4052 and takes the GPIO away: S0
+ *     is now JP2, a two-way DIP that also selects where the USB-C port
+ *     goes. So the rule is now without exceptions.
+ *
+ *  3. ESP CH_PD and RST go to buttons on every board that carries a
+ *     companion; no GPIO reaches them. So the ESP has to be detected by
+ *     talking to it (AT/OK) rather than by rebooting it and watching for
+ *     a ROM banner.
+ *
+ *     The first FRANK Next was the exception — an ESP32 whose CHIP_PU
+ *     and GPIO0 were on GP38/GP39 — and the second is not: its ESP8266EX
+ *     takes reset from S5 and from the CH343P's DTR/RTS pair through a
+ *     UMH3N, which is the usual auto-download arrangement and reaches no
+ *     GPIO of ours.
  *
  *     That still holds, but it was written as "no GPIO reaches any of the
  *     ESP's control pins", which is wider than the netlists support.
@@ -211,15 +223,56 @@ static const pinsig_entry_t sig_xt8086[] = {
     { 47, PINSIG_HIGH  },                        /* PSRAM CE, 10K         */
 };
 
+/* The FRANK Next master. It shares the whole of its link — GP20-42, two
+ * eight-bit buses and their handshakes — with the Core 2 master, and
+ * those pins carry no pull resistors on either board, so none of them
+ * can tell the two apart. What does is everything below GP20: the Core 2
+ * master's microSD is SPI on GP4-7 with no pulls and its I2C does not
+ * exist, while this board's is SDIO with a 10K on every line but the
+ * clock, and its I2C sits on GP2/GP3 behind 4K7.
+ *
+ * GP1 is in here as a float on purpose. It is the only SD line without a
+ * pull-up — the card does not need one on CLK — and stating that is what
+ * makes the five highs either side of it evidence of an SDIO card socket
+ * rather than of a pull-up field. */
 static const pinsig_entry_t sig_next[] = {
-    { 47, PINSIG_HIGH },                       /* PSRAM CE               */
-    { 3, PINSIG_HIGH }, { 4, PINSIG_HIGH },
-    { 5, PINSIG_HIGH }, { 6, PINSIG_HIGH },
-    { 7, PINSIG_HIGH },                        /* SD 4-bit, 10K each      */
-    { 23, PINSIG_HIGH },                       /* DS2401, 4.7K            */
-    { 28, PINSIG_HIGH }, { 29, PINSIG_HIGH },  /* I2C, 4.7K               */
-    { 38, PINSIG_HIGH }, { 39, PINSIG_HIGH },  /* ESP32 CHIP_PU / GPIO0   */
+    { 0, PINSIG_HIGH  },                       /* SD CMD, 10K            */
+    { 1, PINSIG_FLOAT },                       /* SD CLK, deliberately not*/
+    { 4, PINSIG_HIGH  }, { 5, PINSIG_HIGH  },
+    { 6, PINSIG_HIGH  }, { 7, PINSIG_HIGH  },  /* SD DAT0-2, CD/DAT3, 10K*/
+    { 43, PINSIG_HIGH },                       /* slave RUN, 10K — and on*/
+                                               /* this board it is wired */
+    { 45, PINSIG_HIGH },                       /* ESP mux 1Y1, 10K       */
+    { 47, PINSIG_HIGH },                       /* PSRAM CE, 10K          */
 };
+
+/* Three entries were here — GP2, GP3 and GP44 — and the reasons for
+ * removing them are not the reasons first written here.
+ *
+ * GP44 was simply wrong. It expected high, from reading "R48 is 1K to
+ * 3V3" and stopping there, which is the mistake sig_oldskoolfrank
+ * records at length. There is a BC850 on that collector and with nothing
+ * in the tape jack it rests conducting: measured low over SWD. It is
+ * left out rather than flipped, because what it reads with a lead
+ * plugged in has not been measured either.
+ *
+ * GP2 and GP3 expected high, which is right for a working board — 4K7 to
+ * 3V3, and nothing else on the net. They are out because of what happens
+ * when that is not true. On the first FRANK Next brought up here both
+ * pins were shorted to ground; with them in the signature the board
+ * scored 9 of 12 and was still identified, but a second fault would have
+ * taken it below the line and turned a specific, diagnosable failure —
+ * "the I2C bus is dead" — into "unidentified board", which is the least
+ * useful thing this firmware can say.
+ *
+ * A signature should be drawn from pins whose idle state is a property
+ * of the board rather than of its health. The SD pull-up field is that;
+ * a bus with parts hanging off it is not.
+ *
+ * pinsig_score() also declines to probe a descriptor's I2C pins now, for
+ * an unrelated reason that stands on its own: phase B drives a pad low
+ * for ten microseconds, and doing that to SDA while SCL is high is an
+ * I2C START. */
 
 /* ------------------------------------------------------------------ */
 /* Descriptors                                                         */
@@ -268,8 +321,6 @@ static const pinsig_entry_t sig_next[] = {
     .led_ws2812 = NC, .led_plain = NC, \
     .esp_uart_tx = NC, .esp_uart_rx = NC, .esp_chip_pu = NC, \
     .esp_gpio0 = NC, .esp_gpio2 = NC, \
-    .esp_spi_miso = NC, .esp_spi_cs = NC, .esp_spi_sck = NC, \
-    .esp_spi_mosi = NC, .esp_hs = NC, .esp_ready = NC, .esp_mux_sel = NC, \
     .pad_latch = NC, .pad_clk = NC, .pad_d1 = NC, .pad_d2 = NC, \
     .tape_in = NC, \
     .i2c_sda = NC, .i2c_scl = NC, \
@@ -280,7 +331,8 @@ static const pinsig_entry_t sig_next[] = {
     .host_bus_base = NC, .host_bus_len = 0, \
     .host_clk = NC, .host_reset = NC, .host_ready = NC, \
     .link_a_data = NC, .link_b_data = NC, \
-    .link_fs = NC, .link_db_out = NC, .link_db_in = NC
+    .link_fs = NC, .link_db_out = NC, .link_db_in = NC, \
+    .link_run = NC
 
 /* PINS_NONE sets every pin to NC and each board then overrides the ones
  * it uses. That is the point of the idiom, so silence the warning that
@@ -545,56 +597,107 @@ const frank_board_desc_t frank_board_table[] = {
 },
 
 {
-    .id = FRANK_BOARD_CORE2, .name = "FRANK Core 2 (slave)",
+    /* One entry for three boards' slave halves, for the reason the Core
+     * 2 and Core 2U masters are one entry: they are the same chip wired
+     * the same way, and asking the operator to choose between them is
+     * asking a question with no answer.
+     *
+     * FRANK Next's slave joined them. It is pin-identical — PSRAM on
+     * GP0, the two buses on GP1-GP23, UART on GP24/25, LD1 on GP26 — and
+     * everything that makes a FRANK Next a FRANK Next is on the other
+     * chip, which this one cannot see. Given its own descriptor it
+     * scored exactly what this one scores, on the same six pins, and
+     * turned every Core 2 slave into a tie the operator had to break by
+     * hand.
+     *
+     * The cost is LD2, in the usual direction: it exists on FRANK Next
+     * and on neither Core 2, so the WS2812 row has nothing to find on
+     * two boards out of three. The manual note says so. */
+    .id = FRANK_BOARD_CORE2, .name = "Core 2 / FRANK Next (slave)",
     .slug = "core2-slave",
     .mcu = FRANK_MCU_RP2350A, .role = FRANK_ROLE_SLAVE,
-    .caps = CAP_PSRAM_QMI | CAP_LINK | CAP_USB_DEVICE | CAP_LED_PLAIN,
+    .caps = CAP_PSRAM_QMI | CAP_LINK | CAP_USB_DEVICE
+          | CAP_LED_PLAIN | CAP_LED_WS2812,
     .pins = { PINS_NONE,
               .uart_tx = 24, .uart_rx = 25,
-              .led_plain = 26, .psram_cs = 0,
+              .led_plain = 26, .led_ws2812 = 27, .psram_cs = 0,
               .link_a_data = 1, .link_b_data = 11,
               .link_fs = 21, .link_db_in = 22, .link_db_out = 23 },
     SIG(sig_core2_slave),
     .flash_bytes = 16u * 1024u * 1024u,
     .psram_bytes = 8u * 1024u * 1024u,
-    .manual_note = NULL,
+    .manual_note = "Covers the Core 2, Core 2U and FRANK Next slaves, "
+                   "which are pin-identical and cannot be told apart from "
+                   "this half. LD2 (WS2812B, GP27) is on FRANK Next only - "
+                   "on either Core 2 that row has nothing to light.",
 },
 
 /* ---------------------------------------------------------------- */
+/* FRANK Next, second design, and almost nothing of the first survives.
+ *
+ * It was one RP2350B with an ESP32 on SPI; it is now the Core 2's
+ * arrangement — an RP2350B master and an RP2350A slave across two
+ * eight-bit buses — carrying the FRANK Next peripherals. Video on
+ * GP12-19, the TLV320DAC3100 and the DS3231 are the only things that
+ * stayed on the pins they were on. The SD moved, the I2C moved, the I2S
+ * master clock moved, the tape input moved, the LEDs moved to the other
+ * chip, the DS2401 and the gamepad ports are gone, the single PSRAM
+ * became one per MCU, and the ESP32 became an ESP8266EX on a UART.
+ *
+ * The old descriptor is not kept alongside this one. Both designs are
+ * called FRANK Next, both would answer to the same name in a dialog, and
+ * the fleet has no first-design boards left to test. */
 {
     .id = FRANK_BOARD_NEXT, .name = "FRANK Next", .slug = "next",
-    .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_SINGLE,
+    .mcu = FRANK_MCU_RP2350B, .role = FRANK_ROLE_MASTER,
     .caps = CAP_VIDEO_HDMI
           | CAP_AUDIO_I2S | CAP_AUDIO_CODEC_I2C
           | CAP_SD | CAP_SD_4BIT | CAP_PSRAM_QMI
-          | CAP_I2C | CAP_RTC_DS3231 | CAP_ONEWIRE_DS2401
-          | CAP_GAMEPAD_NES | CAP_TAPE_IN
+          | CAP_I2C | CAP_RTC_DS3231
+          | CAP_TAPE_IN | CAP_LINK | CAP_LINK_RUN
           | CAP_USB_DEVICE | CAP_USB_HOST | CAP_USB_HUB | CAP_USB_MUX
-          | CAP_ESP32_SPI | CAP_LED_PLAIN,
-    .pins = { PINS_NONE, PINS_PAD_NES,
-              /* The console UART moved to GP40/41 (J2) because GP0/1 are
-               * multiplexed onto the ESP32 by U18. */
-              .uart_tx = 40, .uart_rx = 41,
-              /* SDIO 4-bit: the one board that does not follow the
-               * GP4-7 SPI convention. */
-              .sd_clk = 2, .sd_cmd = 3, .sd_dat0 = 4,
+          | CAP_ESP01,
+    .pins = { PINS_NONE,
+              /* GP46/GP45 (J2), because GP0/GP1 are the SD card's CMD
+               * and CLK here. GP46 is UART0 TX only at the B package's
+               * alternate function — see boards/frank_next.h. */
+              .uart_tx = 46, .uart_rx = 45,
+              /* SDIO 4-bit, and not on the GP4-7 SPI convention: CMD and
+               * CLK sit below the data lines rather than among them. */
+              .sd_cmd = 0, .sd_clk = 1, .sd_dat0 = 4,
               .sd_dat1 = 5, .sd_dat2 = 6, .sd_cs = 7,
               /* TLV320DAC3100: BCLK/WCLK/DIN, not the TDA's
                * DATA/SCLK/LRCK order. Hence the explicit fields. */
-              .i2s_clk_base = 9, .i2s_data = 11, .i2s_mclk = 24,
-              .video_base = 12, .led_plain = 25, .psram_cs = 47,
-              .i2c_sda = 28, .i2c_scl = 29, .onewire = 23,
-              .tape_in = 22,
-              .esp_uart_tx = 1, .esp_uart_rx = 0, .esp_mux_sel = 30,
-              .esp_spi_miso = 32, .esp_spi_cs = 33, .esp_spi_sck = 34,
-              .esp_spi_mosi = 35, .esp_hs = 36, .esp_ready = 37,
-              .esp_chip_pu = 38, .esp_gpio0 = 39 },
+              .i2s_clk_base = 9, .i2s_data = 11, .i2s_mclk = 8,
+              .video_base = 12, .psram_cs = 47,
+              .i2c_sda = 2, .i2c_scl = 3,
+              /* A BC850 squaring the tape input, where the rest of the
+               * fleet uses a CD4069. */
+              .tape_in = 44,
+              /* The console UART's own pins. The 8266 hangs off the same
+               * pair through U26, so the two cannot talk at once and
+               * neither can be reached while JP2 gives the mux to the
+               * CH343P. */
+              .esp_uart_tx = 46, .esp_uart_rx = 45,
+              .link_a_data = 20, .link_b_data = 30,
+              .link_fs = 40, .link_db_out = 41, .link_db_in = 42,
+              /* A real net here, unlike on the Core 2, where the same
+               * pin is drawn to the slave's RUN and connected to
+               * nothing. The reset test still goes through FS: that
+               * path is the one both boards have, and it proves the
+               * slave's firmware is listening rather than only that its
+               * RUN pin works. Recorded so that nothing drives it by
+               * accident — see the field's note in board_desc.h. */
+              .link_run = 43 },
     SIG(sig_next),
     .flash_bytes = 16u * 1024u * 1024u,
     .psram_bytes = 8u * 1024u * 1024u,
-    .manual_note = "The only board whose companion processor can be reset "
-                   "from firmware (GP38 CHIP_PU, GP39 GPIO0). S5/JP1 select "
-                   "the USB mux.",
+    .manual_note = "JP2 is two switches: UART_SEL gives the ESP8266 to "
+                   "this chip or to the CH343P, and USB_SEL gives the "
+                   "USB-C port to the CH343P or to the slave. The ESP row "
+                   "can only pass with UART_SEL on the RP side. S7 "
+                   "selects the master's USB between the hub and the "
+                   "second port.",
 },
 
 /* ---------------------------------------------------------------- */

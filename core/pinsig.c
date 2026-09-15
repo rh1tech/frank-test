@@ -185,8 +185,8 @@ pinsig_t pinsig_classify(unsigned pin) {
 }
 
 unsigned pinsig_score(const frank_board_desc_t *desc,
-                      uint8_t *mismatches, unsigned max_mismatch,
-                      unsigned *out_mismatch_count) {
+                      uint8_t *mismatches, pinsig_t *measured,
+                      unsigned max_mismatch, unsigned *out_mismatch_count) {
     unsigned matched = 0, bad = 0;
 
     for (unsigned i = 0; i < desc->sig_len; i++) {
@@ -194,10 +194,34 @@ unsigned pinsig_score(const frank_board_desc_t *desc,
 
         if (e->expect == PINSIG_DONTCARE) { matched++; continue; }
 
-        if (pinsig_classify(e->pin) == e->expect) {
+        /* Never the I2C pair, whatever a descriptor asks for.
+         *
+         * Phase B drives a pad low for ten microseconds to tell a
+         * pull-up from a float. On SDA, with SCL still high, that is a
+         * START condition; do it to SCL and it is a clock edge. Probing
+         * both in turn walks every slave on the bus part way into a
+         * transfer nobody asked for, and a slave in that state holds SDA
+         * low long after the probe has finished — which reads as a stuck
+         * bus to everything that comes later.
+         *
+         * Counted as matched rather than skipped, because the pin is not
+         * evidence against the board — it is evidence this probe must
+         * not gather.
+         *
+         * No board has been shown to be jammed by it. The one that
+         * looked like it was had GP2 and GP3 shorted to ground, which no
+         * probe caused and none could have avoided. This stays because
+         * manufacturing a START condition on a live bus to find out how
+         * a pin idles is not a trade worth making for two pins. */
+        if ((int8_t)e->pin == desc->pins.i2c_sda ||
+            (int8_t)e->pin == desc->pins.i2c_scl) { matched++; continue; }
+
+        const pinsig_t got = pinsig_classify(e->pin);
+        if (got == e->expect) {
             matched++;
         } else {
             if (mismatches && bad < max_mismatch) mismatches[bad] = e->pin;
+            if (measured   && bad < max_mismatch) measured[bad]   = got;
             bad++;
         }
     }

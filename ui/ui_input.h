@@ -132,6 +132,19 @@ uint8_t  ui_usb_kbd_last_usage(void);
  * not care which keyboard a key came from. */
 int ui_input_getkey(void);
 
+/* Stop treating bytes on the console UART as keystrokes.
+ *
+ * For boards where that UART is shared with something that talks back.
+ * On FRANK Next the ESP8266 sits on the console's own pins through U26,
+ * so the master's log is the module's command input and the module's
+ * replies are the master's keyboard: printing a line provokes
+ * "ERROR:UNKNOWN_CMD", whose 'R' is the accelerator for Restart. Muting
+ * the console as an input source is what breaks that loop. Bytes are
+ * still consumed, so the FIFO cannot back up; they are simply not
+ * typing. PS/2 and USB HID are unaffected. */
+void ui_input_set_console_keys(bool enabled);
+bool ui_input_console_keys(void);
+
 /* For the report line: what was found. */
 bool ui_input_mouse_connected(void);
 bool ui_input_keyboard_connected(void);

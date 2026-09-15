@@ -28,6 +28,14 @@
  * slave has finished booting just resets it a second time — and at the
  * wrong interval that becomes a reboot loop the operator reads as "the
  * slave never comes up".
+ *
+ * The third rung was theory until FRANK Next. The Core 2 draws GPIO43 to
+ * the slave's RUN and the net is not there, so the escalation ended at
+ * FS and the bottom rung existed only behind a build flag for a board
+ * somebody had bodged a wire onto. FRANK Next routes it, which is why
+ * there are now two reset tests rather than one: they prove different
+ * things, and the new one can prove the older board's missing net is
+ * missing. See t_link_hard_reset() below.
  */
 
 #include "registry.h"
@@ -46,7 +54,13 @@ static diag_link_result_t s_result;
 void tests_link_init(const detect_result_t *d) {
     if (s_inited) return;
     if (!d->board || !(d->board->caps & CAP_LINK)) return;
-    diag_link_init();
+
+    /* The RUN pin comes from the descriptor, and is PIN_NC on every board
+     * but FRANK Next. Passing it unconditionally rather than gating on
+     * CAP_LINK_RUN keeps one source of truth: the capability says the
+     * board can do it, the pin says where, and link_diag.c does nothing
+     * with a negative one. */
+    diag_link_init(d->board->pins.link_run);
     s_inited = true;
 }
 
@@ -112,6 +126,63 @@ static ui_test_state_t t_link_reset(const detect_result_t *d, char *detail,
     }
     snprintf(detail, len, "slave did not reset via FS");
     return TEST_FAIL;
+}
+
+/* The other reset path, and a different claim about different copper.
+ *
+ * The FS test above proves the slave's firmware is listening: it samples
+ * FS from a timer interrupt and reboots itself. That is worth having and
+ * it is the only reset a Core 2 has, but it cannot recover the failure
+ * that actually needs recovering — a slave in lockup with interrupts
+ * off, where no message on any wire reaches anything. Only RUN does, and
+ * only FRANK Next brings it to a pin.
+ *
+ * A pass means four things, and the third is the one the FS test cannot
+ * make: it was answering, it went quiet *while the pin was held low*, it
+ * came back when released, and it came back within a cold boot's time.
+ * Checking only that it rebooted would pass a board whose RUN net is
+ * missing and whose slave happened to restart for some other reason —
+ * which is not a hypothetical, it is the Core 2's schematic. */
+static ui_test_state_t t_link_hard_reset(const detect_result_t *d,
+                                         char *detail, unsigned len,
+                                         test_progress_fn p) {
+    (void)d;
+    if (!s_inited) {
+        snprintf(detail, len, "link not initialised");
+        return TEST_NORUN;
+    }
+    if (p) p(100, "holding RUN low");
+
+    const diag_reset_t r = diag_link_hard_reset_slave();
+    if (p) p(1000, NULL);
+
+    switch (r) {
+    case DIAG_RESET_OK:
+        snprintf(detail, len, "RUN reset: held down, released, back");
+        return TEST_PASS;
+
+    /* n/a in everything but name: the board declared CAP_LINK_RUN, so
+     * being here at all means the descriptor and the pin disagree. That
+     * is a table bug rather than a board fault, and saying so is more
+     * use than a red row. */
+    case DIAG_RESET_NO_PIN:
+        snprintf(detail, len, "no RUN pin in the descriptor");
+        return TEST_NORUN;
+
+    /* Nothing to reset. The link row above will have said why. */
+    case DIAG_RESET_ABSENT:
+        snprintf(detail, len, "slave was not answering");
+        return TEST_NORUN;
+
+    case DIAG_RESET_HELD_ALIVE:
+        snprintf(detail, len, "answered with RUN held low - net open");
+        return TEST_FAIL;
+
+    case DIAG_RESET_NO_RETURN:
+    default:
+        snprintf(detail, len, "reset, but did not come back");
+        return TEST_FAIL;
+    }
 }
 
 /* The link over minutes rather than milliseconds.
@@ -192,9 +263,14 @@ static ui_test_state_t t_link_soak(const detect_result_t *d, char *detail,
 }
 
 const frank_test_t frank_tests_link[] = {
-    { "Processor link", ICON_LINK, CAP_LINK, 0, t_link       },
-    { "Link soak",      ICON_LINK, CAP_LINK, 0, t_link_soak  },
-    { "Slave reset",    ICON_LINK, CAP_LINK, 0, t_link_reset },
+    { "Processor link",   ICON_LINK, CAP_LINK, 0, t_link       },
+    { "Link soak",        ICON_LINK, CAP_LINK, 0, t_link_soak  },
+    { "Slave reset (FS)", ICON_LINK, CAP_LINK, 0, t_link_reset },
+    /* Last, because it is the slowest — a cold boot to wait out — and
+     * because it leaves the slave freshly booted, which is a better
+     * state to hand to whatever runs next than mid-soak. */
+    { "Slave reset (RUN)", ICON_LINK, CAP_LINK | CAP_LINK_RUN, 0,
+      t_link_hard_reset },
 };
 
 const unsigned frank_tests_link_len =

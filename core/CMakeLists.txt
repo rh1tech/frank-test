@@ -54,6 +54,7 @@ target_link_libraries(frank_core
     hardware_clocks
     hardware_flash
     hardware_gpio
+    hardware_i2c
     hardware_sync
     hardware_xip_cache
 )

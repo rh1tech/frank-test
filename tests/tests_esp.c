@@ -7,13 +7,17 @@
  */
 
 /*
- * tests_esp.c — the ESP-01S socket.
+ * tests_esp.c — the companion 8266, socketed or soldered down.
  *
  *
  * WHAT IS BEING TESTED
  *
- * That a module in the socket answers over the UART. Two firmwares are
- * recognised, because both turn up in the field.
+ * That the companion answers over the UART. On most of the fleet that
+ * is an ESP-01S in a socket; on frank_next it is an ESP8266EX soldered
+ * to the board. The test cannot tell the difference and does not need
+ * to — it asks, and either something answers or nothing does.
+ *
+ * Two firmwares are recognised, because both turn up in the field.
  *
  * frank-netcard, whose protocol is a small AT dialect at 115200 8N1:
  *
@@ -55,28 +59,36 @@
  * module and an empty socket are indistinguishable from here, and the
  * row says so rather than guessing.
  *
+ * On frank_next the part is soldered down, so there is no empty socket
+ * to explain a silence — but there is a switch. JP2's UART_SEL gives the
+ * 8266 to the CH343P instead of to us, and from here that looks exactly
+ * the same as an absent module. The row cannot tell them apart either;
+ * the board's manual_note is what says to check the switch.
+ *
  *
  * WHY THERE IS NO RESET
  *
- * CH_PU and GPIO0 go to buttons on every ESP-01S board in the fleet, not
- * to GPIOs — see the note in board_desc.h. So the module cannot be
+ * CH_PU and GPIO0 go to buttons on every board in the fleet, not to
+ * GPIOs — see the note in board_desc.h. So the module cannot be
  * power-cycled or held in bootloader from firmware, and the test has to
  * work with whatever state it is already in. That is why it opens with a
  * bare AT rather than a reset: if the module is up, AT answers
  * immediately, and if it is wedged there is nothing this can do about
- * it. frank_next is the exception and is not this test — it carries an
- * ESP32 on SPI with real reset lines.
+ * it.
+ *
+ * The first FRANK Next was the exception, with an ESP32 on SPI and real
+ * reset lines. Its replacement is not: the 8266 there takes reset from a
+ * button and from the CH343P's DTR/RTS pair, which is the arrangement
+ * that lets a host flash it over USB and reaches nothing of ours.
  *
  *
- * THE TWO PIN PAIRS
+ * THE THREE PIN PAIRS
  *
- * GP20/21 on FRANK and miniFRANK, GP38/39 on FRANK PGA and MegaFRANK.
- * Both are UART1, but not by the same function number: GP20/21 are
- * UART1 TX/RX at FUNCSEL 2, while at FUNCSEL 2 GP38/39 are UART1 *CTS
- * and RTS* — TX/RX live at FUNCSEL 0x0b instead. So the SDK's
- * GPIO_FUNC_UART, which is 2, silently wires up flow control on half the
- * fleet and the module never hears a byte. The function is chosen per
- * pin below.
+ * GP20/21 on FRANK and miniFRANK, GP38/39 on FRANK PGA and MegaFRANK,
+ * GP46/45 on frank_next. The first two are UART1 and the third is UART0,
+ * and no two of them take the same function number — see the note on
+ * esp_uart_open() for why, and why the rule that used to be written here
+ * was the wrong generalisation of two examples.
  *
  *
  * THE SHARED PINS
@@ -88,6 +100,12 @@
  * a result — but it does mean the two cannot be in use at once. The test
  * hands the pins back as GPIO inputs when it finishes so the gamepad
  * dialog finds them as it expects.
+ *
+ * frank_next shares them with something less forgiving: its ESP hangs
+ * off the console UART, through the same mux that can give those pins to
+ * the CH343P instead. So this test borrows the console for the length of
+ * the exchange and gives it back, rather than handing the pins over as
+ * inputs — which on that board would end the run's logging.
  */
 
 #include "registry.h"
@@ -97,6 +115,8 @@
 
 #include "hardware/gpio.h"
 #include "hardware/uart.h"
+#include "pico/stdio_uart.h"
+#include "ui_input.h"
 #include "pico/stdlib.h"
 
 #include <stdio.h>
@@ -113,67 +133,131 @@
  * not for the reply. */
 #define ESP_REPLY_MS 400u
 
-/* UART1 on both pin pairs. UART0 is the console, and on the boards with
- * PS/2 it is the mouse. */
-#define ESP_UART uart1
-
-/* FUNCSEL 0x0b — UART1 TX/RX on the GP38/39 pair. The SDK has no name
- * for it because it is specific to the high pins on the B package. */
-#define GPIO_FUNC_UART_HIGH 11u
-
 typedef struct {
     int tx, rx;
+    uart_inst_t *uart;
+    bool         is_console;     /* the pins are the console's own */
 } esp_pins_t;
+
+/* Which UART a pin belongs to.
+ *
+ * The peripheral's map goes in blocks of four and repeats every sixteen
+ * GPIOs: 0-3 UART0, 4-7 UART1, 8-11 UART1, 12-15 UART0, and again from
+ * GP16, GP32. That is one XOR of two bits, and writing it as one is
+ * better than a table of twelve rows that has to be extended the next
+ * time a board uses a pin nobody has used yet. */
+static uart_inst_t *uart_for_pin(int gpio) {
+    return (((gpio >> 2) ^ (gpio >> 3)) & 1) ? uart1 : uart0;
+}
 
 static bool pins_from(const frank_pins_t *p, esp_pins_t *out) {
     if (p->esp_uart_tx == PIN_NC || p->esp_uart_rx == PIN_NC) return false;
-    out->tx = p->esp_uart_tx;
-    out->rx = p->esp_uart_rx;
+    out->tx   = p->esp_uart_tx;
+    out->rx   = p->esp_uart_rx;
+    out->uart = uart_for_pin(out->tx);
+
+    /* Only true on frank_next, where there is one UART for both jobs. */
+    out->is_console = (out->uart == uart_default) &&
+                      (out->tx == PICO_DEFAULT_UART_TX_PIN) &&
+                      (out->rx == PICO_DEFAULT_UART_RX_PIN);
     return true;
 }
 
-/* GP20/21 take FUNCSEL 2; GP38/39 take 0x0b. Anything else is a
- * descriptor this code has not been told about, and it says so rather
- * than picking one and producing a silent failure. */
+/* Each block of four is TX, RX, CTS, RTS at FUNCSEL 2 — and on the
+ * RP2350, TX, RX again at FUNCSEL 11 for the CTS/RTS half. So a pair is
+ * usable if it sits in one block with an even TX and an odd RX, and the
+ * SDK's UART_FUNCSEL_NUM() picks the right function for each pin.
+ *
+ * This used to be "GP20/21 take 2, anything above GP31 takes 11", which
+ * was true of the two pairs that existed when it was written and is not
+ * a rule: it is 11 for GP38/39 because both have bit 1 set, not because
+ * they are high pins. frank_next's GP46/45 straddles the two halves —
+ * TX at 11, RX at 2 — and a blanket 11 would have configured its RX as
+ * an RTS output driving the mux. */
 static bool esp_uart_open(const esp_pins_t *p) {
-    uint32_t fn_tx, fn_rx;
+    if ((p->tx >> 2) != (p->rx >> 2)) return false;   /* not one block */
+    if ((p->tx & 1) || !(p->rx & 1))  return false;   /* not TX and RX */
 
-    if (p->tx <= 31 && p->rx <= 31) {
-        fn_tx = fn_rx = GPIO_FUNC_UART;
-    } else if (p->tx >= 32 && p->rx >= 32) {
-        fn_tx = fn_rx = GPIO_FUNC_UART_HIGH;
-    } else {
-        return false;
+    /* Where this is also the console, take stdio off it first. Anything
+     * printed mid-exchange would go out as an AT line the module has to
+     * ignore, and its reply would land in our collect buffer. */
+    if (p->is_console) {
+        stdio_flush();
+        stdio_set_driver_enabled(&stdio_uart, false);
     }
 
-    uart_init(ESP_UART, ESP_BAUD);
-    uart_set_format(ESP_UART, 8, 1, UART_PARITY_NONE);
-    uart_set_hw_flow(ESP_UART, false, false);   /* the ESP-01S has none */
-    uart_set_fifo_enabled(ESP_UART, true);
+    uart_init(p->uart, ESP_BAUD);
+    uart_set_format(p->uart, 8, 1, UART_PARITY_NONE);
+    uart_set_hw_flow(p->uart, false, false);    /* no 8266 module has any */
+    uart_set_fifo_enabled(p->uart, true);
 
-    gpio_set_function((uint)p->tx, (gpio_function_t)fn_tx);
-    gpio_set_function((uint)p->rx, (gpio_function_t)fn_rx);
+    gpio_set_function((uint)p->tx, UART_FUNCSEL_NUM(p->uart, p->tx));
+    gpio_set_function((uint)p->rx, UART_FUNCSEL_NUM(p->uart, p->rx));
     return true;
 }
 
 /* Back to plain inputs. The gamepad reader expects to find its clock and
  * latch as GPIOs, and leaving them driven by a UART would make its next
- * read nonsense. */
+ * read nonsense.
+ *
+ * Unless they are the console's, in which case handing them back as
+ * inputs is how the log goes quiet for the rest of the run. */
+/* Empty the receive path, and keep emptying it until the line has been
+ * quiet for a spell.
+ *
+ * Draining once is not enough. esp_reply_collect() returns the moment it
+ * sees OK or ERROR, so the rest of that line is still on the wire when
+ * the caller moves on: at 115200 the tail of "ERROR:UNKNOWN_CMD\r\n"
+ * takes about a millisecond to arrive. Bytes that land after a single
+ * drain are the whole bug this guards against - see esp_uart_close().
+ *
+ * The cap is there because a module emitting async events could
+ * otherwise hold this for ever, and a test that never returns is worse
+ * than a stale byte. */
+#define ESP_DRAIN_QUIET_US  3000
+#define ESP_DRAIN_CAP_US   50000
+
+static void esp_drain(uart_inst_t *u) {
+    const absolute_time_t cap = make_timeout_time_us(ESP_DRAIN_CAP_US);
+    absolute_time_t quiet = make_timeout_time_us(ESP_DRAIN_QUIET_US);
+
+    while (absolute_time_diff_us(get_absolute_time(), quiet) > 0 &&
+           absolute_time_diff_us(get_absolute_time(), cap) > 0) {
+        if (uart_is_readable(u)) {
+            (void)uart_getc(u);
+            quiet = make_timeout_time_us(ESP_DRAIN_QUIET_US);
+        }
+    }
+}
+
 static void esp_uart_close(const esp_pins_t *p) {
-    uart_deinit(ESP_UART);
+    if (p->is_console) {
+        /* Drain before stdio takes the pins back, or the tail of the
+         * last reply becomes typing.
+         *
+         * On FRANK Next this UART is the console - GP46/GP45 through
+         * U26 - so anything still unread here is handed to
+         * ui_input_getkey(), which cannot tell a byte from a keypress.
+         * 'R' is bound to Restart, so one stale reply rebooted the
+         * board. It read as the link soak resetting it, because
+         * run_all() does not poll the keyboard: the bytes sat in the
+         * FIFO from this test until the run ended, thirty seconds of
+         * soak later. */
+        esp_drain(p->uart);
+        stdio_uart_init();          /* re-opens the UART and the driver */
+        return;
+    }
+
+    uart_deinit(p->uart);
     gpio_init((uint)p->tx);
     gpio_set_dir((uint)p->tx, GPIO_IN);
     gpio_init((uint)p->rx);
     gpio_set_dir((uint)p->rx, GPIO_IN);
 }
 
-static void esp_drain(void) {
-    while (uart_is_readable(ESP_UART)) (void)uart_getc(ESP_UART);
-}
-
-static void esp_send(const char *cmd) {
-    uart_puts(ESP_UART, cmd);
-    uart_puts(ESP_UART, "\r\n");
+static void esp_send(uart_inst_t *u, const char *cmd) {
+    uart_puts(u, cmd);
+    uart_puts(u, "\r\n");
 }
 
 /* Collect reply lines until one of them is OK or ERROR, or until the
@@ -183,17 +267,18 @@ static void esp_send(const char *cmd) {
  * pick out a +TAG: line. Async events can arrive at any time — the
  * protocol says so — which is the other reason this gathers rather than
  * matching the first line. */
-static bool esp_collect(char *buf, unsigned len, unsigned timeout_ms) {
+static bool esp_collect(uart_inst_t *u, char *buf, unsigned len,
+                        unsigned timeout_ms) {
     unsigned n = 0;
     buf[0] = '\0';
 
     const absolute_time_t deadline = make_timeout_time_ms(timeout_ms);
     while (absolute_time_diff_us(get_absolute_time(), deadline) > 0) {
-        if (!uart_is_readable(ESP_UART)) {
+        if (!uart_is_readable(u)) {
             tight_loop_contents();
             continue;
         }
-        const char c = (char)uart_getc(ESP_UART);
+        const char c = (char)uart_getc(u);
         if (n + 1 < len) { buf[n++] = c; buf[n] = '\0'; }
 
         /* Terminators, checked on every byte so the loop leaves as soon
@@ -224,7 +309,8 @@ static ui_test_state_t t_esp01(const detect_result_t *d, char *detail,
         return TEST_NORUN;
     }
     if (!esp_uart_open(&p)) {
-        snprintf(detail, len, "GP%d/%d is not a UART1 pair", p.tx, p.rx);
+        snprintf(detail, len, "GP%d/%d is not a UART TX/RX pair",
+                 p.tx, p.rx);
         return TEST_NORUN;
     }
 
@@ -233,11 +319,11 @@ static ui_test_state_t t_esp01(const detect_result_t *d, char *detail,
     /* A module that has just been powered emits +READY of its own accord,
      * and anything still in the FIFO from that would be read as the reply
      * to the first command. */
-    esp_drain();
+    esp_drain(p.uart);
 
     if (progress) progress(200, "AT");
-    esp_send("AT");
-    const bool answered = esp_collect(buf, sizeof buf, ESP_REPLY_MS);
+    esp_send(p.uart, "AT");
+    const bool answered = esp_collect(p.uart, buf, sizeof buf, ESP_REPLY_MS);
 
     if (!answered || !strstr(buf, "OK")) {
         esp_uart_close(&p);
@@ -249,32 +335,53 @@ static ui_test_state_t t_esp01(const detect_result_t *d, char *detail,
         return TEST_NORUN;
     }
 
-    /* It is talking. Everything from here is detail, and a module that
-     * answers AT but not AT+VER is running something other than
-     * frank-netcard — worth reporting as a pass with a caveat rather
+    /* It is talking - and if these are the console's own pins, that is
+     * the end of the console as an input device for this session.
+     *
+     * The two share one UART through U26, so every line the firmware
+     * prints lands in the module's command parser, which answers each
+     * one with "ERROR:UNKNOWN_CMD". Those replies come back up through
+     * console_getkey(), which cannot tell a byte from a keypress, and
+     * 'R' is the accelerator for Restart: the board reboots itself a
+     * few seconds after any run that printed anything. It looked like
+     * the link soak resetting the board, because run_all() does not
+     * poll the keyboard and the flood was only read once it returned.
+     *
+     * Muting it here rather than for the whole board is deliberate: a
+     * module only answers when JP2's UART_SEL gives the mux to this
+     * side, and when it does not, a terminal on J2 is a real keyboard
+     * and should keep working. */
+    if (p.is_console) {
+        ui_input_set_console_keys(false);
+        printf("[esp] module answers on the console UART (GP%d/%d) - "
+               "console keys off for this session\n", p.tx, p.rx);
+    }
+
+    /* Everything from here is detail, and a module that answers AT but
+     * not AT+VER is running something other than frank-netcard — worth reporting as a pass with a caveat rather
      * than a failure, because the socket and the UART are both proven. */
     char ver[48] = "", heap[24] = "";
 
     if (progress) progress(500, "AT+VER");
-    esp_drain();
-    esp_send("AT+VER");
-    if (esp_collect(buf, sizeof buf, ESP_REPLY_MS)) esp_tag(buf, "+VER:", ver, sizeof ver);
+    esp_drain(p.uart);
+    esp_send(p.uart, "AT+VER");
+    if (esp_collect(p.uart, buf, sizeof buf, ESP_REPLY_MS)) esp_tag(buf, "+VER:", ver, sizeof ver);
 
     if (ver[0]) {
         /* frank-netcard. It has a heap query too, and free heap is worth
          * knowing before anything opens a TLS socket. */
         if (progress) progress(800, "AT+HEAP");
-        esp_drain();
-        esp_send("AT+HEAP");
-        if (esp_collect(buf, sizeof buf, ESP_REPLY_MS))
+        esp_drain(p.uart);
+        esp_send(p.uart, "AT+HEAP");
+        if (esp_collect(p.uart, buf, sizeof buf, ESP_REPLY_MS))
             esp_tag(buf, "+HEAP:", heap, sizeof heap);
     } else {
         /* Espressif's stock AT firmware. AT+GMR answers with four
          * unprefixed lines; the first is the one worth the row's width. */
         if (progress) progress(800, "AT+GMR");
-        esp_drain();
-        esp_send("AT+GMR");
-        if (esp_collect(buf, sizeof buf, ESP_REPLY_MS))
+        esp_drain(p.uart);
+        esp_send(p.uart, "AT+GMR");
+        if (esp_collect(p.uart, buf, sizeof buf, ESP_REPLY_MS))
             esp_tag(buf, "AT version:", ver, sizeof ver);
     }
 
@@ -289,7 +396,9 @@ static ui_test_state_t t_esp01(const detect_result_t *d, char *detail,
 }
 
 const frank_test_t frank_tests_esp[] = {
-    { "ESP-01", ICON_CHIP_SMALL, CAP_ESP01, 0, t_esp01 },
+    /* Named for the part rather than for the module, because on
+     * frank_next there is no module. */
+    { "ESP 8266", ICON_CHIP_SMALL, CAP_ESP01, 0, t_esp01 },
 };
 
 const unsigned frank_tests_esp_len =

@@ -21,12 +21,33 @@ static void pin_drive_low(unsigned pin) {
     gpio_set_dir(pin, GPIO_OUT);
 }
 
+/* Standard I2C recovery: a slave that was interrupted mid-byte is still
+ * driving SDA and is waiting for the clocks it was promised. Nine pulses
+ * on SCL walk it to the end of its byte and the ACK slot, after which it
+ * lets go and a STOP returns the bus to idle.
+ *
+ * Worth doing unconditionally at init rather than only when SDA reads
+ * low: the cost is nine pulses on an idle bus, which no slave reacts to
+ * without a START, and the alternative is every caller inheriting
+ * whatever the last one left behind. */
+static void bb_recover(unsigned sda, unsigned scl) {
+    for (int i = 0; i < 9 && !gpio_get(sda); i++) {
+        pin_drive_low(scl); busy_wait_us_32(I2C_DELAY_US);
+        pin_release(scl);   busy_wait_us_32(I2C_DELAY_US);
+    }
+    /* STOP: SDA low to high while SCL is high. */
+    pin_drive_low(sda); busy_wait_us_32(I2C_DELAY_US);
+    pin_release(scl);   busy_wait_us_32(I2C_DELAY_US);
+    pin_release(sda);   busy_wait_us_32(I2C_DELAY_US);
+}
+
 void i2c_bb_init(unsigned sda, unsigned scl) {
     gpio_init(sda); gpio_init(scl);
     gpio_put(sda, 0); gpio_put(scl, 0);
     pin_release(sda); pin_release(scl);
     gpio_pull_up(sda); gpio_pull_up(scl);
     busy_wait_us_32(I2C_DELAY_US * 4);
+    bb_recover(sda, scl);
 }
 
 void i2c_bb_release(unsigned sda, unsigned scl) {
@@ -91,7 +112,17 @@ static uint8_t bb_read_byte(unsigned sda, unsigned scl, bool ack) {
     return v;
 }
 
+bool i2c_bb_idle(unsigned sda, unsigned scl) {
+    pin_release(sda); pin_release(scl);
+    busy_wait_us_32(I2C_DELAY_US * 2);
+    return gpio_get(sda) && gpio_get(scl);
+}
+
 bool i2c_bb_probe(unsigned sda, unsigned scl, uint8_t addr7) {
+    /* No device can be reached on a bus that is not idle, and saying so
+     * is the difference between "nothing answered" and a fault report
+     * naming parts that are not reachable. See i2c_bb_idle(). */
+    if (!i2c_bb_idle(sda, scl)) return false;
     bb_start(sda, scl);
     const bool ack = bb_write_byte(sda, scl, (uint8_t)(addr7 << 1));  /* write */
     bb_stop(sda, scl);
@@ -110,6 +141,7 @@ bool i2c_bb_write(unsigned sda, unsigned scl, uint8_t addr7,
 
 bool i2c_bb_read_regs(unsigned sda, unsigned scl, uint8_t addr7,
                       uint8_t reg, uint8_t *out, size_t len) {
+    if (!i2c_bb_idle(sda, scl)) return false;
     if (!out || len == 0) return false;
 
     bb_start(sda, scl);

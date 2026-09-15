@@ -383,10 +383,6 @@ static pinmask_t claimed_pins(const frank_board_desc_t *b) {
     claim(&m, p->esp_uart_tx);  claim(&m, p->esp_uart_rx);
     claim(&m, p->esp_chip_pu);  claim(&m, p->esp_gpio0);
     claim(&m, p->esp_gpio2);
-    claim(&m, p->esp_spi_miso); claim(&m, p->esp_spi_cs);
-    claim(&m, p->esp_spi_sck);  claim(&m, p->esp_spi_mosi);
-    claim(&m, p->esp_hs);       claim(&m, p->esp_ready);
-    claim(&m, p->esp_mux_sel);
     claim(&m, p->pad_latch);    claim(&m, p->pad_clk);
     claim(&m, p->pad_d1);       claim(&m, p->pad_d2);
     claim(&m, p->tape_in);      claim(&m, p->dip);
@@ -398,6 +394,10 @@ static pinmask_t claimed_pins(const frank_board_desc_t *b) {
     claim_run(&m, p->link_b_data, 10);
     claim(&m, p->link_fs);      claim(&m, p->link_db_out);
     claim(&m, p->link_db_in);
+    /* Claimed for the same reason as the host bus below rather than
+     * because another test drives it: this is the other half's RUN pin,
+     * and the sweep's way of testing a pad is to drive it low. */
+    claim(&m, p->link_run);
 
     /* The host CPU bus, where there is one.
      *

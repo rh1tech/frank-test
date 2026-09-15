@@ -470,6 +470,12 @@ bool ui_key_held(uint8_t usage, uint8_t ps2, bool ext) {
     return false;
 }
 
+/* Whether console bytes count as typing. See ui_input_set_console_keys(). */
+static bool s_console_keys = true;
+
+void ui_input_set_console_keys(bool enabled) { s_console_keys = enabled; }
+bool ui_input_console_keys(void)             { return s_console_keys; }
+
 int ui_input_getkey(void) {
 #if UI_INPUT_USB_HID
     int k = hid_getkey();
@@ -479,5 +485,11 @@ int ui_input_getkey(void) {
     int p = ui_ps2_getkey();
     if (p != UI_KEY_NONE) return p;
 #endif
+    if (!s_console_keys) {
+        /* Still read, so a talkative peer cannot fill the FIFO and stall
+         * the driver - but thrown away rather than pressing anything. */
+        while (getchar_timeout_us(0) != PICO_ERROR_TIMEOUT) { }
+        return UI_KEY_NONE;
+    }
     return console_getkey();
 }

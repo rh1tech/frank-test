@@ -19,6 +19,7 @@
 #define DETECT_H
 
 #include "board_desc.h"
+#include "pinsig.h"
 
 #define DETECT_MAX_CANDIDATES 6
 #define DETECT_MAX_MISMATCH   8
@@ -72,7 +73,23 @@ typedef struct {
     unsigned  best_score;              /* pins matched               */
     unsigned  best_of;                 /* pins compared              */
     int       margin;                  /* best minus runner-up       */
+    /* Every address that acknowledged on the winning I2C pair, not just
+     * the two the fleet knows by name. A part that is fitted but answers
+     * somewhere unexpected is indistinguishable from an absent one when
+     * all you ask is "is 0x18 there", and on a new board that is the
+     * difference between a wrong address and a bad joint. */
+    uint8_t   i2c_addr[12];
+    uint8_t   i2c_addr_n;
+
+    /* How many attempts the scan needed, and what was wrong when it
+     * failed. A bus that is merely not ready yet and a bus that is
+     * broken look identical on a single try — these say which. */
+    uint8_t   i2c_attempts;
+    bool      i2c_sda_low;      /* released and still low  */
+    bool      i2c_scl_low;      /* ditto; nothing here stretches the clock */
+
     uint8_t   mismatch[DETECT_MAX_MISMATCH];
+    pinsig_t  mismatch_got[DETECT_MAX_MISMATCH];   /* what was read     */
     unsigned  mismatch_count;
 
     /* True when two or more descriptors scored identically and nothing

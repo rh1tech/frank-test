@@ -43,8 +43,15 @@ typedef struct {
     bool     all_passed;
 } diag_link_result_t;
 
-/* Claim PIO/DMA and configure the master's link pins. Call once. */
-void diag_link_init(void);
+/* Claim PIO/DMA and configure the master's link pins. Call once.
+ *
+ * `slave_run_pin` is the GPIO that reaches the other chip's RUN, or -1
+ * where the board has no such net — which is every board but FRANK Next.
+ * Taken as an argument rather than from a board header because it is the
+ * one link pin that is not the same on every board with a link: the rest
+ * are identical across the Core 2, the Core 2U and FRANK Next, and this
+ * one either exists or does not. */
+void diag_link_init(int slave_run_pin);
 
 /* Run the whole sequence: handshake, remote self-test, rate sweep,
  * verified transfers, latency. Renders progress into the console log
@@ -56,18 +63,19 @@ void diag_link_run(diag_link_result_t *out);
 
 /* Cheap "is the slave there yet?" probe for the idle loop.
  *
- * The master cannot reset the slave in hardware (see README), so a slave
- * that boots late, is reflashed, or reboots on its own has to be picked
- * up by the master noticing rather than by the master power-cycling it.
- * Uses a short doorbell timeout so a genuinely absent slave costs a
- * blink rather than a stalled foreground, and pulses FS to ask a wedged
- * slave to reboot itself before giving up on this attempt.
+ * A slave that boots late, is reflashed, or reboots on its own has to be
+ * picked up by the master noticing. Uses a short doorbell timeout so a
+ * genuinely absent slave costs a blink rather than a stalled foreground,
+ * and escalates as the failures accumulate: first an FS request asking a
+ * wedged slave to reboot itself, then — where the board has the pin — a
+ * RUN pulse, which is the only thing that reaches a slave whose
+ * interrupts are off.
  *
  * Returns true when the slave answered — the caller should then re-run
  * the full diagnostic. */
 bool diag_link_try_reconnect(void);
 
-/* Ask the slave to reboot and prove that it did.
+/* Ask the slave to reboot over the wire and prove that it did.
  *
  * Confirms the slave is answering, pulses FS, then watches for it to
  * stop answering and come back. "Stopped answering" is the part that
@@ -76,5 +84,33 @@ bool diag_link_try_reconnect(void);
  *
  * Returns true only if the slave went away and returned. */
 bool diag_link_reset_slave(void);
+
+/* Why a hardware reset attempt ended. Not a bool, because the four ways
+ * this fails want four different things said about them — and one of
+ * them, HELD_ALIVE, is a specific diagnosis rather than a disappointment:
+ * the slave went on answering while its RUN pin was held low, so the pin
+ * this firmware is driving does not reach it. That is the Core 2's
+ * missing net, reported from the master rather than traced by hand. */
+typedef enum {
+    DIAG_RESET_OK = 0,        /* held down, released, came back          */
+    DIAG_RESET_NO_PIN,        /* the board has no RUN net                */
+    DIAG_RESET_ABSENT,        /* nothing was answering to begin with     */
+    DIAG_RESET_HELD_ALIVE,    /* answered while RUN was held low         */
+    DIAG_RESET_NO_RETURN,     /* went down and did not come back         */
+} diag_reset_t;
+
+/* Pull the slave's RUN low, prove it went quiet *while held*, release,
+ * and wait for it to come back.
+ *
+ * Probing during the hold is what separates this from the FS test. A
+ * slave that reboots when asked proves its firmware is listening; a
+ * slave that stops answering because a pin is held low proves the pin
+ * arrives, which is a different claim about different copper and the one
+ * that matters when the firmware is the thing that has stopped working.
+ *
+ * Takes several seconds: a RUN reset is a cold boot, so the slave does
+ * not know it was asked and runs its full console-attach window on the
+ * way up. See the note on the timeout in the implementation. */
+diag_reset_t diag_link_hard_reset_slave(void);
 
 #endif /* LINK_DIAG_H */

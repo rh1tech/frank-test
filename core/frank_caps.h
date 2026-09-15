@@ -53,7 +53,10 @@ typedef enum {
      * both. See the descriptor in board_table.c for what that costs on
      * the older revision. */
     FRANK_BOARD_CORE2,            /* RP2350B + RP2350A, U revision too  */
-    FRANK_BOARD_NEXT,             /* RP2350B + ESP32                    */
+    /* Its master only. The slave half is pin-identical to the Core 2's
+     * and shares that descriptor, for the same reason the two Core 2
+     * revisions share theirs — see board_table.c. */
+    FRANK_BOARD_NEXT,             /* RP2350B + RP2350A + ESP8266        */
     FRANK_BOARD_Z0PA,             /* Waveshare RP2350-PiZero            */
     FRANK_BOARD_XT8086,           /* RP2350B chipset for a real 8086    */
 
@@ -128,8 +131,15 @@ typedef uint64_t frank_caps_t;
 #define CAP_I2C                  (1ull << 24)
 
 /* Companion processors */
-#define CAP_ESP01                (1ull << 25)  /* ESP-01S on a UART            */
-#define CAP_ESP32_SPI            (1ull << 26)  /* ESP32-D0WD over SPI          */
+/* A companion 8266 on a UART, whether it arrives on an ESP-01S module or
+ * is soldered down as a bare ESP8266EX. The test does not care which —
+ * it asks over the UART and either something answers or nothing does.
+ *
+ * Bit 26 was CAP_ESP32_SPI, an ESP32-D0WD reached over SPI with real
+ * reset lines. The only board that had one was the first FRANK Next, and
+ * the second replaced it with an 8266 on the console UART, so nothing
+ * declares it and no test ever implemented it. */
+#define CAP_ESP01                (1ull << 25)  /* an 8266 on a UART            */
 #define CAP_LINK                 (1ull << 27)  /* the dual-RP2350 parallel link*/
 
 /* Indicators and controls */
@@ -166,6 +176,24 @@ typedef uint64_t frank_caps_t;
  * the pin-short sweep can be told to keep its hands off; see
  * `host_bus_base` in board_desc.h. */
 #define CAP_HOST_8086            (1ull << 33)
+
+/* The master can pull the slave's RUN pin low.
+ *
+ * Separate from CAP_LINK, and the separation is the point. Every board
+ * with a link can ask the slave to reboot itself over the wire, because
+ * the slave samples FS from a timer interrupt — that path proves the
+ * slave's firmware is listening, and it is the only path a Core 2 has.
+ * It also cannot recover the one failure worth recovering: a slave in
+ * lockup with interrupts off, which no message reaches.
+ *
+ * FRANK Next is the first board where GP43 actually arrives at the other
+ * chip's RUN pin. The Core 2 schematic draws the same net and the copper
+ * is not there, which is why this is a capability the board declares
+ * rather than something inferred from having two processors.
+ *
+ * See `link_run` in board_desc.h for the pin, and tests_link.c for what
+ * the two reset paths each prove. */
+#define CAP_LINK_RUN             (1ull << 34)
 
 /* Any video output at all — convenience mask, not a bit of its own. */
 #define CAP_VIDEO_ANY  (CAP_VIDEO_HDMI | CAP_VIDEO_VGA | CAP_VIDEO_COMPOSITE)

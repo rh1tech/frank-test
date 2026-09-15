@@ -35,7 +35,7 @@ or a memory of what was intended. Boards excluded per instruction:
 | `nyx` | RP2350 QFN-80 | RP2350B | W25Q128 16 MB | ESP-PSRAM64 (GP47) | — |
 | `frank_core2` | RP2350B + RP2350A | both | 2× W25Q128 | 2× (M:GP47, S:GP0) | the slave |
 | `frank_core2u` | RP2350B + RP2350A | both | 2× W25Q128 | 2× (M:GP47, S:GP0) | the slave |
-| `frank_next` | RP2350B + ESP32-D0WD-V3 | RP2350B | W25Q128 + W25Q32 | ESP-PSRAM64H (GP47) | ESP32 over SPI |
+| `frank_next` | RP2350B + RP2350A + ESP8266EX | both | 2× W25Q128 + W25Q16 | 2× APS6404L (M:GP47, S:GP0) | the slave, and an 8266 on the console UART |
 | `turbosound` | — | — | — | — | AY daughterboard |
 
 `frank`'s CPU is socketed: the same PCB is an RP2040 board or an RP2350A
@@ -60,7 +60,7 @@ board depending on which module is fitted. Detection has to survive that.
 | `nyx` | — | — | — | — | — | native only | — | — | — |
 | `frank_core2` | HDMI | TDA1387 + LM358 | GP4–7 | — | — | 2× native | — | — | — |
 | `frank_core2u` | HDMI | TDA1387 + LM358 | GP4–7 | — | — | 2× native + hub + TS3USB221 | CD4069 GP45 | — | — |
-| `frank_next` | HDMI | **TLV320DAC3100** I2C+I2S, MCLK GP24 | **4-bit** GP2–7 | — | NES GP20/21 + GP26/27 | CH334F hub + CH343P + TPS2116 | CD4069 GP22 | DS3231 GP28/29 | **DS2401 GP23** |
+| `frank_next` | HDMI | **TLV320DAC3100** I2C+I2S, MCLK GP8 | **4-bit** GP0/1 + GP4–7 | — | — | CH334F hub + CH343P + TPS2116 + 2× TS3USB221 | BC850 GP44 | DS3231 GP2/3 | — |
 
 Full per-GPIO tables for every board are in
 `docs/pinouts.md` (generated — see §7).
@@ -71,13 +71,14 @@ Worth stating because they are what make one firmware plausible:
 
 - **GP4–7 = microSD** on every board that has a card slot, in the same
   order (DAT0, CD/DAT3, CLK, CMD) — except `frank_next`, which is 4-bit
-  on GP2–7.
+  and puts CMD and CLK on GP0/1 below the data lines.
 - **GP9/10/11 = I2S** (DATA, SCLK/BCLK, LRCK/WCLK) on every audio board.
 - **GP12–19 = video**, always in the HDMI order CLKN, CLKP, D0N, D0P,
   D1N, D1P, D2N, D2P — and on the boards that also have VGA, the same
   eight pins carry the resistor-ladder RGB and syncs.
-- **GP0/1 = UART0** wherever a debug header exists (`frank_next` moves it
-  to GP40/41 and muxes GP0/1 to the ESP32).
+- **GP0/1 = UART0** wherever a debug header exists — except `frank_next`,
+  where GP0/1 are the card's CMD and CLK and the console moves to
+  GP46/45, which is still UART0 and is also where its 8266 hangs.
 
 This matches Murmulator 2.0, which is why the frank-msx drivers already
 in `drivers/` drop in unmodified.
@@ -135,9 +136,9 @@ autodetect > interactive prompt**.
 This splits the fleet into the two binaries (§1.4):
 
 - **RP2350A** — `frank`, `microfrank`, `minifrank`, `zerofrank`, and the
-  core2/core2u *slave*
-- **RP2350B** — `frank_pga`, `megafrank`, `oldskoolfrank`, `nyx`,
-  `frank_next`, and the core2/core2u *master*
+  core2/core2u/next *slave*
+- **RP2350B** — `frank_pga`, `megafrank`, `oldskoolfrank`, `nyx`, and the
+  core2/core2u/next *master*
 
 ### 2.3 Tier 1 — active probes (positive identification)
 
@@ -147,11 +148,10 @@ Each of these is a yes/no that only one or two boards can answer yes to.
 |---|---|---|
 | **PSRAM CS sweep** | QMI probe through the *uncached* XIP alias `0x15000000` on each candidate CS {0, 8, 47}; address-aliasing size check | narrows RP2350A to {micro, mini, zero} vs slave; RP2350B to {nyx, next, master} |
 | **Soft-SPI PSRAM** | manual 0x9F on GP31/32/33 (not QMI) | `megafrank` only |
-| **I2C scan GP28/29** | 100 kHz, addresses 0x08–0x77 | 0x68 DS3231 → {`megafrank`, `frank_next`}; 0x18 TLV320 → `frank_next` only |
-| **1-Wire ROM read** | reset + `0x33`, check family byte `0x01` and CRC8 | GP23 → `frank_next`; GP30 → `megafrank`. Also yields a **unique per-unit serial** |
-| **Link doorbell** | raise DB_MS (GP41), wait 200 ms for DB_SM (GP42) | `frank_core2` / `frank_core2u` master |
-| **ESP32 reset** | pulse CHIP_PU (GP38) and watch GP0/1 for the 115200 ROM banner | `frank_next` **only** |
-| **ESP-01S talk** | send `AT\r\n` at 115200 on the board's ESP UART, look for `OK`. CH_PD and RST go to *buttons* on every ESP-01S board — no GPIO reaches them, so the ESP cannot be rebooted to make it announce itself and has to be spoken to instead | `minifrank`, `frank_pga`, `megafrank`, `oldskoolfrank` |
+| **I2C scan** | 100 kHz, addresses 0x08–0x77, on each candidate's own pair — GP28/29, GP2/3 or GP38/39 — stopping at the first that answers | 0x68 DS3231 → {`megafrank`, `frank_next`, `xt8086`}; 0x18 TLV320 → `frank_next` only |
+| **1-Wire ROM read** | reset + `0x33`, check family byte `0x01` and CRC8 | GP30 → `megafrank`, now the only board with a DS2401. Also yields a **unique per-unit serial** |
+| **Link doorbell** | raise DB_MS (GP41), wait 200 ms for DB_SM (GP42) | `frank_core2` / `frank_core2u` / `frank_next` master — the three share the link pins exactly, so this says a link is there and not which board it is |
+| **8266 talk** | send `AT\r\n` at 115200 on the board's ESP UART, look for `OK`. CH_PD and RST go to *buttons* on every board that carries a companion — no GPIO reaches them, so the ESP cannot be rebooted to make it announce itself and has to be spoken to instead | `minifrank`, `frank_pga`, `megafrank`, `oldskoolfrank`, `frank_next` |
 
 The uncached-alias detail matters and is already understood in the
 existing firmware: through the cached window a write followed by a read
@@ -232,7 +232,9 @@ unnecessary. For any new board revision:
 - **A 3-bit ID strap** — three GPIOs each strapped to 3V3 or GND
   (8 codes, ~£0.01). Unambiguous, instant, no erratum exposure.
 - **Or a DS2401** — one part, one pin, gives model *and* a unique unit
-  serial, as `megafrank` and `frank_next` already do.
+  serial, as `megafrank` does. The first `frank_next` did too; its
+  replacement dropped the part, which is exactly the direction this
+  section argues against.
 
 Adding either to `frank_core2`'s successor would close §2.5 permanently.
 
@@ -429,10 +431,10 @@ no PS/2" with "PS/2 is broken" is how a test suite stops being believed.
 | 18 | **PS/2 mouse** | reset and ID (`0x00` plain, `0x03` wheel, `0x04` 5-button), sample-rate knock sequence for IntelliMouse, stream-mode packets, X/Y sign bits, overflow flags, all buttons | frank, pga, mega, mini, oldskool, hecate |
 | 17 | **Gamepad** | NES/SNES latch+clock shift, DB9 Atari, idle-state sanity | frank, pga, mega, mini, oldskool, next |
 | 18 | **Tape in** | CD4069 comparator toggling; audio-out→tape-in loopback where the connectors allow | frank, pga, mega, mini, oldskool, core2u, next |
-| 19 | **RTC** | DS3231 read/write, oscillator running (two reads 1 s apart), temperature register, battery retention across a power cycle | mega, next |
-| 20 | **1-Wire ID** | DS2401 ROM read + CRC-8, report the unit serial | mega, next |
-| 21 | **ESP** | reset, ROM banner, firmware version; RP↔ESP32 SPI link throughput | mini, pga, mega, oldskool, next |
-| 22 | **Inter-MCU link** | the existing 4-rate duplex sweep, integrity pass, round-trip latency | core2, core2u |
+| 19 | **RTC** | DS3231 read/write, oscillator running (two reads 1 s apart), temperature register, battery retention across a power cycle | mega, next, xt8086 |
+| 20 | **1-Wire ID** | DS2401 ROM read + CRC-8, report the unit serial | mega |
+| 21 | **ESP** | AT, then firmware version. No reset: no board's GPIO reaches CH_PU or RST | mini, pga, mega, oldskool, next |
+| 22 | **Inter-MCU link** | the existing 4-rate duplex sweep, integrity pass, round-trip latency | core2, core2u, next |
 | 23 | **LED / heartbeat** | WS2812 colour states or plain LED, driven from a timer IRQ so it keeps beating while the foreground is parked | all |
 | 24 | **Buttons / DIP** | reset, BOOTSEL, config switches | boards that have them |
 | 25 | **Power** | VREG setting, 3V3 rail via ADC where a pin is free | all |
@@ -445,8 +447,10 @@ The netlist extraction turned up something the board diagrams do not
 make obvious, and it changes what several of these tests can claim:
 
 **Every audio mux, USB mux and amplifier-shutdown line in the fleet is
-driven by a physical switch or jumper, not by a GPIO.** The sole
-exception is `frank_next`'s ESP UART mux on GP30.
+driven by a physical switch or jumper, not by a GPIO.** This had one
+exception, the first `frank_next`'s ESP UART mux on GP30; the second
+keeps the 4052 and gives S0 to a DIP, so the rule is now without
+exceptions.
 
 | Board | Control | Sets |
 |---|---|---|
@@ -455,6 +459,7 @@ exception is `frank_next`'s ESP UART mux on GP30.
 | `megafrank` | S1, S9, S10 | S1 1/2 audio mux (TDA vs TurboSound), 6 amp, 9-3 tape onto GP22; S9 USB mux; S10 PSRAM enable |
 | `minifrank` | S2, S1 | S2 pin2 audio mux, pins 1-4 tape onto GP22; S1 USB mux |
 | `microfrank`, `oldskoolfrank`, `core2u` | S1 / S2 / S5 | USB mux |
+| `frank_next` | JP2, S7 | JP2 UART_SEL gives the 8266 to the RP or the CH343P, JP2 USB_SEL gives USB-C to the CH343P or the slave; S7 the master's USB mux |
 
 So tests 10 and 16 cannot switch a path and compare. They can only
 verify whichever path the switch currently selects, and then **name the
@@ -465,9 +470,9 @@ Stating this plainly matters more than it looks: a test that silently
 verifies one of two paths and reports "audio mux OK" is claiming
 coverage it does not have.
 
-Likewise **ESP-01S CH_PD and RST go to buttons on every board that
-carries one.** Only `frank_next` can reset its companion processor from
-firmware.
+Likewise **ESP CH_PD and RST go to buttons on every board that carries a
+companion.** No board can reset its companion processor from firmware —
+the first `frank_next` could, and its replacement cannot.
 
 Throughput and integrity stay measured **separately**, as they already
 are in the core2u link test: throughput is one uninterrupted DMA with no
@@ -990,6 +995,13 @@ one will.
    "no response": send succeeded, reply never came, which pointed at one
    direction of the bus and from there at what had just been driving it.
    Any test that drives pins now has to declare what it must not touch.
+
+   FRANK Next adds the sharpest case of this. Its GP43 reaches the
+   slave's RUN, so a pin sweep or a signature probe that drove it low —
+   which is how both of them ask their question — would reset the slave
+   in the middle of whatever was asking. The descriptor names the pin
+   (`link_run`) for no other reason than so the things that drive pads
+   can be told to leave it alone.
 
 6. **`frank_core2` vs `frank_core2u`** cannot be resolved
    electrically (§2.5). Declared identity only, until a board ID strap

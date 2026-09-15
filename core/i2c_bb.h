@@ -36,6 +36,22 @@
 void i2c_bb_init(unsigned sda, unsigned scl);
 void i2c_bb_release(unsigned sda, unsigned scl);
 
+/* Both lines released and reading high — an idle, usable bus.
+ *
+ * Worth asking before anything else, because of how an acknowledge is
+ * detected down in bb_write_byte(): the master releases SDA and looks to
+ * see whether the slave pulled it low. On a bus that is *stuck* low that
+ * test answers yes for every address, so a shorted SDA does not read as
+ * a dead bus — it reads as 112 devices, or as whichever two the caller
+ * happened to ask about.
+ *
+ * That is not hypothetical. A FRANK Next with GP2 and GP3 shorted to
+ * ground reported "DS3231:yes TLV320:yes" from tier 1 detection while
+ * the bus scan, which checks this first, correctly called both lines
+ * stuck. The scan was right and the probe was confidently wrong, and
+ * two hours went into explaining a fault that was not there. */
+bool i2c_bb_idle(unsigned sda, unsigned scl);
+
 /* True when a slave acknowledged its address. */
 bool i2c_bb_probe(unsigned sda, unsigned scl, uint8_t addr7);
 

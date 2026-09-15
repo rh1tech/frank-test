@@ -9,19 +9,20 @@
 /*
  * rtc_ds3231.h — reading and setting the wall clock, where there is one.
  *
- * Two boards in the fleet carry a DS3231: megafrank and frank_next, both
- * on the I2C pair the descriptor names. Everything else has no notion of
- * the date at all, and this says so rather than inventing one — a
- * plausible wrong timestamp on a test report is worse than a missing
- * one, because it gets believed later.
+ * Three boards in the fleet carry a DS3231: megafrank, frank_next and
+ * xt8086, each on the I2C pair its descriptor names — GP28/29, GP2/3 and
+ * GP38/39, no two the same. Everything else has no notion of the date at
+ * all, and this says so rather than inventing one — a plausible wrong
+ * timestamp on a test report is worse than a missing one, because it
+ * gets believed later.
  *
  *
  * WHY THERE IS NO NTP HERE
  *
- * It was asked for, and the fleet will not support it. The two boards
- * with an RTC and the two boards with a network interface are disjoint
- * sets except for frank_next, whose ESP32 runs firmware this repository
- * does not own. So the time comes from a person: either the dialog, or
+ * It was asked for, and the fleet will not support it. The boards with
+ * an RTC and the boards with a network interface are disjoint sets
+ * except for frank_next, whose 8266 runs firmware this repository does
+ * not own. So the time comes from a person: either the dialog, or
  * `time 2026-08-06 14:31:00` typed at the console by a host that already
  * knows what time it is, which is the same answer with fewer keystrokes.
  *

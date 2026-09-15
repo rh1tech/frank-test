@@ -40,9 +40,14 @@ bool pinsig_is_safe(unsigned pin);
  * `max_mismatch`. Returns the number of entries that matched; the caller
  * compares that against desc->sig_len and against the runner-up to get
  * a margin. PINSIG_DONTCARE entries count as matched and cost nothing. */
+/* `measured`, when not NULL, receives the state actually read for each
+ * mismatching pin, in step with `mismatches`. A signature written from a
+ * schematic rather than from a board gets this wrong sooner or later —
+ * see sig_oldskoolfrank and sig_z0pa — and "GP2 wanted high, read low"
+ * is the difference between knowing that and guessing at it. */
 unsigned pinsig_score(const frank_board_desc_t *desc,
-                      uint8_t *mismatches, unsigned max_mismatch,
-                      unsigned *out_mismatch_count);
+                      uint8_t *mismatches, pinsig_t *measured,
+                      unsigned max_mismatch, unsigned *out_mismatch_count);
 
 /* Human-readable, for the report. */
 const char *pinsig_name(pinsig_t s);

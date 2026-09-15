@@ -18,7 +18,8 @@ one that owns up.
 | `SD` | Tested. CID/CSD and sector 0 |
 | `RTC_DS3231` | Tested. Oscillator-stop flag and a live seconds tick |
 | `ONEWIRE_DS2401` | Tested. ROM read |
-| `LINK` | Tested. Handshake, throughput, slave reset |
+| `LINK` | Tested. Handshake, throughput, FS reset |
+| `LINK_RUN` | Tested. RUN held low, probed while held, released. FRANK Next only |
 | `VIDEO_HDMI/VGA/COMPOSITE` | Tested. Frames counted per backend |
 | `AUDIO_I2S`, `AUDIO_MUX`, `TURBOSOUND` | Interactive. Driven, not verified |
 | `GAMEPAD_NES` | Interactive |
@@ -28,7 +29,6 @@ one that owns up.
 | `USB_DEVICE`, `USB_MUX`, `PIO_USB` | Untested |
 | `GAMEPAD_DB9` | Untested |
 | `ESP01` | Tested. AT, then AT+VER or AT+GMR |
-| `ESP32_SPI` | Untested |
 | `LED_PLAIN`, `LED_WS2812` | Interactive. Driven; the operator judges the light |
 | `DIPSWITCH` | Tested, as far as the hardware allows - see below |
 | `I2C` | Tested. Full 0x08-0x77 scan, and both lines checked idle-high |
@@ -179,22 +179,21 @@ consumer will hit the same wall.
 OldSkoolFRANK wires Atari-style straight to GPIOs. No shift register, so the NES
 reader does not apply. Plain pin reads, same dialog treatment.
 
-### 10. ESP-01S and ESP32 (`CAP_ESP01`, `CAP_ESP32_SPI`)
+### 10. The companion 8266 (`CAP_ESP01`) - done
 
-The descriptors carry a UART pair, chip-enable, GPIO0, a full SPI set, handshake
-and ready lines, and a mux select. That is two separate tests.
+Send `AT`, expect `OK`, then `AT+VER` or `AT+GMR` for a version. Proves the
+socket or the solder joints, both directions of the UART, the module's 3V3 rail
+and that its firmware is running.
 
-For the ESP-01S: toggle CH_PU, send `AT`, expect `OK`. Proves the module is
-powered, reset-controllable and talking. For the ESP32: assert CS and exercise
-the handshake and ready pair.
+There is no reset step, because no board has one: CH_PU and RST go to buttons
+everywhere. Absence reports *could not run*, since a dead module and an empty
+socket are indistinguishable from here - and on FRANK Next, so is a JP2 switch
+left on the CH343P.
 
-Both need the module fitted, so absence has to report *could not run*.
-
-The ESP-01S half is done. The ESP32 half is not: it exists only on FRANK Next,
-which has real reset lines where the ESP-01S boards have buttons, so it is a
-genuinely different test rather than the same one with different pins. Written
-blind it would be untestable here, and this firmware has already spent an evening
-on hardware code that could not be checked against the board it was for.
+This used to be two tests. `CAP_ESP32_SPI` covered the first FRANK Next's ESP32
+over SPI, with handshake, ready and mux-select lines and real reset control; it
+was never written, and the board it was for has been replaced by one with an
+ESP8266 on the console UART. The capability and its pin fields are gone.
 
 ### 11. SD write, and a results report — write done, report not
 
@@ -333,7 +332,6 @@ exercises that path incidentally anyway.
 2. Report export to SD. Makes the rig traceable
 6. Report export to SD. Makes the rig traceable
 7. LEDs and DB9 gamepads. Quick once the dialog pattern gets reused
-8. ESP-01S and ESP32. Needs modules to test against
 9. Burn-in loop and link soak. Once the rest is stable
 10. PIO-USB. After sorting out who owns which PIO
 

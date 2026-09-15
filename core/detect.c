@@ -32,6 +32,7 @@
 
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
+#include "hardware/i2c.h"
 #include "hardware/structs/sysinfo.h"
 #include "pico/stdlib.h"
 
@@ -151,6 +152,12 @@ static bool ds2401_read(unsigned pin, uint8_t rom[8]) {
  * past. */
 static const uint8_t psram_cs_candidates[] = { 8, 47, 0 };
 
+/* Attempts the I2C scan gets, and how long it waits between them. Six
+ * tries at 40 ms covers a part that is slow out of its own reset without
+ * making a genuinely empty bus cost a quarter of a second. */
+#define I2C_SCAN_ATTEMPTS    6u
+#define I2C_SCAN_BACKOFF_MS 40u
+
 static void tier1_probes(detect_result_t *r,
                          const frank_board_desc_t **cands, unsigned n) {
     r->psram_cs_found = PIN_NC;
@@ -185,14 +192,22 @@ static void tier1_probes(detect_result_t *r,
      *
      * It stops at the first pair that *answers* rather than after the
      * first pair it tries, and that is a safety property rather than an
-     * optimisation. Bit-banging a bus onto pins that are something else
-     * on this board drives them, and GP38/39 in particular are the
-     * ESP32's CHIP_PU and GPIO0 on frank_next — clocking those would
-     * reset its companion and could leave it in the ROM downloader. On a
-     * frank_next the RTC answers on GP28/29 first, so GP38/39 is never
-     * reached; the sweep only continues past a pair that had nothing on
-     * it, by which point the boards owning that pair are already ruled
-     * out by their own missing RTC. */
+     * optimisation: bit-banging a bus onto pins that are something else
+     * on this board drives them, and the sweep only continues past a
+     * pair that had nothing on it — by which point the board owning that
+     * pair is already ruled out by its own missing RTC.
+     *
+     * Three pairs exist in the table and none of them is idle on the
+     * boards that do not use it. GP28/29 is megafrank's and frank_pga's,
+     * and on frank_next it is the link's clock and valid for bus A.
+     * GP2/GP3 is frank_next's, and on xt8086 it is the 8086's AD2 and
+     * AD3. GP38/39 is xt8086's, and on frank_next it is bus B's clock
+     * and valid. Each board answers on its own pair first, so in
+     * practice no board reaches another's — and where one would, the
+     * pins it drives are the same ones tier 2's signature probe already
+     * drives, on the same reasoning: an 8086 with no clock holds its bus
+     * high-impedance, and a link line briefly clocked by an I2C probe
+     * carries no framing the other half will act on. */
     for (unsigned c = 0; c < n; c++) {
         const frank_pins_t *p = &cands[c]->pins;
         if (p->i2c_sda == PIN_NC || p->i2c_scl == PIN_NC) continue;
@@ -204,17 +219,53 @@ static void tier1_probes(detect_result_t *r,
                    cands[e]->pins.i2c_scl == p->i2c_scl;
         if (seen) continue;
 
-        i2c_bb_init((unsigned)p->i2c_sda, (unsigned)p->i2c_scl);
-        r->i2c_ds3231 |= i2c_bb_probe((unsigned)p->i2c_sda,
-                                      (unsigned)p->i2c_scl, 0x68);
-        r->i2c_tlv320 |= i2c_bb_probe((unsigned)p->i2c_sda,
-                                      (unsigned)p->i2c_scl, 0x18);
-        i2c_bb_release((unsigned)p->i2c_sda, (unsigned)p->i2c_scl);
+        const unsigned sda = (unsigned)p->i2c_sda, scl = (unsigned)p->i2c_scl;
+
+        /* Scan, and try again if nothing answered.
+         *
+         * One attempt cannot tell a bus that is broken from a bus whose
+         * parts have not finished their own power-on yet, or from one
+         * left held by a slave that was interrupted mid-byte. Each
+         * attempt begins with i2c_bb_init(), which clocks a stuck slave
+         * off SDA before anything else happens, so the retry is a real
+         * second chance rather than the same question asked twice.
+         *
+         * What it cannot fix is SCL: nothing on this bus stretches the
+         * clock, so a clock line that stays low is not a slave to be
+         * recovered, it is copper. That case is recorded rather than
+         * retried into, and the report says so. */
+        for (unsigned attempt = 1; attempt <= I2C_SCAN_ATTEMPTS; attempt++) {
+            r->i2c_attempts = (uint8_t)attempt;
+            i2c_bb_init(sda, scl);
+
+            if (!i2c_bb_idle(sda, scl)) {
+                r->i2c_sda_low = !gpio_get(sda);
+                r->i2c_scl_low = !gpio_get(scl);
+                i2c_bb_release(sda, scl);
+                sleep_ms(I2C_SCAN_BACKOFF_MS);
+                continue;
+            }
+            r->i2c_sda_low = r->i2c_scl_low = false;
+
+            for (uint8_t a = 0x08u; a <= 0x77u; a++) {
+                if (!i2c_bb_probe(sda, scl, a)) continue;
+                if (r->i2c_addr_n < count_of(r->i2c_addr))
+                    r->i2c_addr[r->i2c_addr_n++] = a;
+                if (a == 0x68u) r->i2c_ds3231 = true;
+                if (a == 0x18u) r->i2c_tlv320 = true;
+            }
+            i2c_bb_release(sda, scl);
+
+            if (r->i2c_addr_n) break;
+            sleep_ms(I2C_SCAN_BACKOFF_MS);
+        }
 
         if (r->i2c_ds3231 || r->i2c_tlv320) break;
     }
 
-    /* ---- 1-Wire: GP23 on frank_next, GP30 on megafrank ---- */
+    /* ---- 1-Wire: GP30 on megafrank, which is now the only board
+     * with a DS2401. The first FRANK Next had one on GP23 and the
+     * second does not fit the part at all. ---- */
     for (unsigned c = 0; c < n && !r->onewire_found; c++) {
         int8_t pin = cands[c]->pins.onewire;
         if (pin == PIN_NC) continue;
@@ -297,8 +348,26 @@ static bool tier1_consistent(const detect_result_t *r,
     if (!wants_qmi_psram && !d->module_memory && r->psram_cs_found != PIN_NC &&
         !(d->caps & CAP_PSRAM_SOFTSPI)) return false;
 
-    if ((bool)(d->caps & CAP_RTC_DS3231)     != r->i2c_ds3231)   return false;
-    if ((bool)(d->caps & CAP_AUDIO_CODEC_I2C) != r->i2c_tlv320)  return false;
+    /* One way, like the DS2401 and the link peer below, and for exactly
+     * the reasons given there. A part that answered proves the board has
+     * it. A part that stayed quiet proves nothing: it may be a DNP
+     * option, a dead part, an empty battery holder — or a bus that is
+     * not working, which is the case that made this matter.
+     *
+     * This used to compare both ways, and on a FRANK Next with GP2 and
+     * GP3 shorted to ground it did what the PSRAM comment above
+     * describes in two other flavours: the RTC and the codec could not
+     * answer, so the board was vetoed out of its own identification, and
+     * `core2` won on 4 of 6 pins by being the last RP2350B descriptor
+     * still standing. The board then reported itself as a Core 2, with
+     * its own dead I2C bus as the reason.
+     *
+     * It was hidden until the bus fault was fixed in i2c_bb_probe(): a
+     * stuck-low SDA acknowledges every address, so both parts came back
+     * "present" and the two-way test passed by accident. Fixing the
+     * false positive is what exposed this. */
+    if (r->i2c_ds3231 && !(d->caps & CAP_RTC_DS3231))      return false;
+    if (r->i2c_tlv320 && !(d->caps & CAP_AUDIO_CODEC_I2C)) return false;
 
     /* A DS2401 that answered proves the board has one. A DS2401 that did
      * not answer proves nothing — the part is a DNP option on some
@@ -338,8 +407,9 @@ static void tier2_fingerprint(detect_result_t *r,
 
     for (unsigned i = 0; i < n; i++) {
         uint8_t  bad_pins[DETECT_MAX_MISMATCH];
+        pinsig_t bad_got[DETECT_MAX_MISMATCH];
         unsigned bad = 0;
-        unsigned matched = pinsig_score(cands[i], bad_pins,
+        unsigned matched = pinsig_score(cands[i], bad_pins, bad_got,
                                         DETECT_MAX_MISMATCH, &bad);
         unsigned len   = cands[i]->sig_len;
         unsigned score = len ? (matched * 1000u) / len : 0u;
@@ -356,6 +426,8 @@ static void tier2_fingerprint(detect_result_t *r,
             r->best_of         = len;
             r->mismatch_count  = bad < DETECT_MAX_MISMATCH ? bad : DETECT_MAX_MISMATCH;
             memcpy(r->mismatch, bad_pins, r->mismatch_count);
+            memcpy(r->mismatch_got, bad_got,
+                   r->mismatch_count * sizeof(bad_got[0]));
         } else if (score > second) {
             second = score;
         }
@@ -379,7 +451,7 @@ static void tier2_fingerprint(detect_result_t *r,
         if (!len) continue;
         uint8_t  scratch[DETECT_MAX_MISMATCH];
         unsigned bad = 0;
-        unsigned matched = pinsig_score(cands[i], scratch,
+        unsigned matched = pinsig_score(cands[i], scratch, NULL,
                                         DETECT_MAX_MISMATCH, &bad);
         if ((matched * 1000u) / len == best)
             r->candidates[r->candidate_count++] = cands[i];
@@ -431,10 +503,31 @@ void detect_run(detect_result_t *out) {
 #ifdef FRANK_BOARD_COMPILED
     frank_board_id_t compiled = frank_board_from_slug(FRANK_BOARD_COMPILED);
     if (compiled != FRANK_BOARD_UNKNOWN) {
-        out->board  = frank_board_desc(compiled, out->auto_guess
-                                       ? out->auto_guess->role
-                                       : FRANK_ROLE_SINGLE);
-        out->source = DETECT_SRC_COMPILED;
+        /* A slug names a board, not a half of one, and frank_board_desc()
+         * wants an exact role. Asking for the fingerprint's role works
+         * only when there was a fingerprint; with none — which is the
+         * usual reason for forcing a board in the first place — it asked
+         * for SINGLE, got NULL for every master/slave board, and fell
+         * through to the fallback descriptor. The override appeared to
+         * do nothing.
+         *
+         * So try the suggested role first and then the others, and take
+         * only a descriptor this silicon could actually be running. */
+        static const frank_role_t roles[] = {
+            FRANK_ROLE_SINGLE, FRANK_ROLE_MASTER, FRANK_ROLE_SLAVE,
+        };
+        const frank_role_t first = out->auto_guess ? out->auto_guess->role
+                                                   : FRANK_ROLE_SINGLE;
+        const frank_board_desc_t *d = frank_board_desc(compiled, first);
+
+        for (unsigned i = 0; !d && i < count_of(roles); i++) {
+            const frank_board_desc_t *c = frank_board_desc(compiled, roles[i]);
+            if (c && (c->mcu == out->mcu || c->mcu == FRANK_MCU_ANY)) d = c;
+        }
+        if (d) {
+            out->board  = d;
+            out->source = DETECT_SRC_COMPILED;
+        }
     }
 #endif
 
@@ -534,6 +627,23 @@ void detect_report(const detect_result_t *r) {
     printf("  i2c        DS3231:%s  TLV320:%s\n",
            r->i2c_ds3231 ? "yes" : "no", r->i2c_tlv320 ? "yes" : "no");
 
+    if (r->i2c_addr_n) {
+        printf("  i2c bus    ");
+        for (unsigned i = 0; i < r->i2c_addr_n; i++)
+            printf("0x%02X ", r->i2c_addr[i]);
+        printf(" (%u attempt%s)\n", r->i2c_attempts,
+               r->i2c_attempts == 1 ? "" : "s");
+    } else if (r->i2c_scl_low || r->i2c_sda_low) {
+        printf("  i2c bus    %s held low after %u attempts - not a slave, "
+               "nothing here stretches the clock\n",
+               r->i2c_sda_low && r->i2c_scl_low ? "SDA and SCL"
+                               : (r->i2c_sda_low ? "SDA" : "SCL"),
+               r->i2c_attempts);
+    } else {
+        printf("  i2c bus    idles high, nothing answered (%u attempts)\n",
+               r->i2c_attempts);
+    }
+
     if (r->onewire_found)
         printf("  1-wire     DS2401 on GP%d, serial %02X%02X%02X%02X%02X%02X\n",
                (int)r->onewire_pin, r->onewire_rom[6], r->onewire_rom[5],
@@ -554,9 +664,21 @@ void detect_report(const detect_result_t *r) {
            r->ambiguous ? "  AMBIGUOUS" : "");
 
     if (r->mismatch_count) {
+        /* What was expected and what was there, because the pin number
+         * alone does not say which way a signature is wrong — and a
+         * signature written from a schematic is exactly the thing that
+         * needs correcting from a board. */
         printf("  disagreed  ");
-        for (unsigned i = 0; i < r->mismatch_count; i++)
-            printf("GP%u ", (unsigned)r->mismatch[i]);
+        for (unsigned i = 0; i < r->mismatch_count; i++) {
+            const unsigned pin = (unsigned)r->mismatch[i];
+            pinsig_t want = PINSIG_DONTCARE;
+            if (r->auto_guess)
+                for (unsigned e = 0; e < r->auto_guess->sig_len; e++)
+                    if (r->auto_guess->sig[e].pin == pin)
+                        want = r->auto_guess->sig[e].expect;
+            printf("GP%u(want %s, read %s) ", pin,
+                   pinsig_name(want), pinsig_name(r->mismatch_got[i]));
+        }
         printf("\n");
     }
 

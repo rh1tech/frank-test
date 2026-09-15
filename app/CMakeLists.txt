@@ -176,6 +176,7 @@ target_compile_definitions(frank-test PRIVATE
 
 target_compile_options(frank-test PRIVATE -O2 -Wall -Wno-unused-parameter)
 
+
 # usbhid is an INTERFACE library whose sources must compile into the
 # executable, so it is linked here rather than by frank_ui_video — and
 # only when it exists, since UI_INPUT_USB_HID=OFF skips creating it.
@@ -202,7 +203,21 @@ else()
     pico_enable_stdio_usb(frank-test 1)
     target_compile_definitions(frank-test PRIVATE
         PICO_STDIO_USB_CONNECTION_WITHOUT_DTR=1
-        PICO_STDIO_USB_STDOUT_TIMEOUT_US=20000)
+        PICO_STDIO_USB_STDOUT_TIMEOUT_US=20000
+        # And make it a *pure* CDC device, which is not the SDK default.
+        #
+        # The SDK adds a vendor reset interface, so the device enumerates
+        # composite with bDeviceClass != 0x02. macOS Sonoma and later then
+        # decline to attach AppleUSBCDCACMData, and no /dev/cu.usbmodem*
+        # appears at all — the board is plainly there in ioreg as
+        # 2E8A:0009 and there is simply nothing to open.
+        #
+        # Which defeats the entire point of this branch: it exists so a
+        # board with no UART header broken out can still be brought up
+        # over a bare USB cable. Found on a FRANK Next, whose console UART
+        # is on GP46/45 and needs an adapter nobody had to hand.
+        PICO_STDIO_USB_ENABLE_RESET_VIA_VENDOR_INTERFACE=0
+        PICO_STDIO_USB_RESET_BOOTSEL_INTERFACE_DISABLE_MASK=0)
 endif()
 
 pico_add_extra_outputs(frank-test)

@@ -3,15 +3,20 @@
 //       SHOULD ONLY CONSIST OF PREPROCESSOR DIRECTIVES
 // -----------------------------------------------------
 //
-// Every RP2350B FRANK target: MegaFRANK, Nyx, OldSkoolFRANK, FRANK Next,
-// the Core 2 and Core 2U masters, and any module-socket board carrying a
-// Pico Plus 2.
+// Every RP2350B FRANK target whose console is on GP0/GP1: MegaFRANK,
+// Nyx, OldSkoolFRANK, the Core 2 and Core 2U masters, and any
+// module-socket board carrying a Pico Plus 2.
 //
 // One header for all of them, because they agree on everything the SDK
 // needs to know — package, flash part, flash size, console pins — and
 // differ only in peripherals, which the board table describes at run
 // time and this cannot. The two Core 2 master headers this replaces were
 // byte-identical apart from a marker define.
+//
+// The exceptions are the two boards that moved the console off GP0/GP1,
+// and each has a header of its own saying why: frank_xt8086.h, where
+// those pins are an 8086's AD0 and AD1, and frank_next.h, where they are
+// the microSD's CMD and CLK.
 //
 // Copyright (c) 2026 Mikhail Matveev <xtreme@rh1.tech>
 // https://github.com/rh1tech/frank-test

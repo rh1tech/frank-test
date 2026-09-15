@@ -61,7 +61,7 @@ page instead of a shrunken copy of the desktop.
 | zeroFRANK | RP2350A | |
 | OldSkoolFRANK | PGA2350 module | DB9 gamepads, TDA1545A into an LM358. VGA by default — the socket is chosen by solder jumpers the firmware cannot see |
 | FRANK Core 2 | RP2350B + RP2350A | Inter-processor link. One descriptor covers Core 2 and Core 2U; the U revision adds tape and a USB hub |
-| FRANK Next | RP2350B | TLV320 codec |
+| FRANK Next | RP2350B + RP2350A | Inter-processor link, same as the Core 2's. TLV320 codec, SDIO 4-bit card, ESP8266 on the console UART |
 | Waveshare RP2350-PiZero ("Z0pa") | RP2350B | HDMI on GP32-39, driven from the PIO; optional PCM5122 audio hat |
 | xt8086 | RP2350B + 8086 | The RP2350 is the 8086's whole chipset, so GP0-29 are a CPU bus. VGA only, on GP30-37; one PWM pin for sound |
 
@@ -92,26 +92,30 @@ GPIO the package does not have.
 | Board | Image |
 |---|---|
 | miniFRANK, microFRANK, zeroFRANK | `rp2350a` |
-| MegaFRANK, FRANK Next | `rp2350b` |
+| MegaFRANK | `rp2350b` |
 | OldSkoolFRANK | `rp2350b` — a PGA2350 is always the B package |
 | Waveshare RP2350-PiZero ("Z0pa") | `rp2350b` — its HDMI is on GP32-39, which only the B package has |
 | FRANK PGA | `rp2350b` — a PGA2350 is always the B package |
 | FRANK | whichever module is in the socket: a Pico 2 is `rp2350a`, a Pico Plus 2 is `rp2350b` |
 | FRANK Core 2, Core 2U — master | `rp2350b` |
-| FRANK Core 2, Core 2U — slave | `slave` |
+| FRANK Core 2, Core 2U, FRANK Next — slave | `slave` |
+| FRANK Next — master | `next` — the same program as `rp2350b`, with the console moved |
 | xt8086 | `xt8086` — the same program as `rp2350b`, with the console moved |
 
 The slave image is a different program: the link peer the master talks to. Flash
-it to the second chip of a Core 2 or Core 2U, or "Processor link" and "Slave
-reset" will correctly report that nothing answered.
+it to the second chip of a Core 2, Core 2U or FRANK Next, or "Processor link" and
+"Slave reset" will correctly report that nothing answered. One image covers all
+three, because their slave halves are pin-identical.
 
-The `xt8086` image is not a different program — everything peculiar to that board
-is in its descriptor, which is where board differences belong. The one thing a
-descriptor cannot move is the console UART, because stdio is up long before
-detection runs, and `rp2350b` puts it on GP0/GP1. On xt8086 those are the 8086's
-AD0 and AD1, so the generic image would drive two lines of a live CPU's address
-bus with every `printf`. The `xt8086` image is the same firmware with its console
-on GP44/GP45, where the board's header is.
+The `next` and `xt8086` images are not different programs — everything peculiar
+to those boards is in their descriptors, which is where board differences belong.
+The one thing a descriptor cannot move is the console UART, because stdio is up
+long before detection runs, and `rp2350b` puts it on GP0/GP1. On xt8086 those are
+the 8086's AD0 and AD1; on FRANK Next they are the microSD's CMD and CLK. The
+generic image would drive two lines of a live CPU's address bus with every
+`printf` in the first case and the card's command line in the second. Each image
+is the same firmware with its console where its own header says: GP44/GP45 for
+xt8086, GP46/GP45 for FRANK Next.
 
 ---
 
@@ -188,8 +192,11 @@ and size.
 on some boards and not others. The I²C sweep tries each candidate's bus in turn
 and stops at the first that answers, which is a safety property as much as a
 saving: bit-banging a bus onto pins that are something else on the board in front
-of you drives them, and GP38/GP39 are xt8086's I²C but frank_next's ESP32 reset
-and boot-mode lines.
+of you drives them. Three pairs are in the table and none is idle elsewhere:
+GP28/GP29 is MegaFRANK's and FRANK PGA's but FRANK Next's link clock, GP2/GP3 is
+FRANK Next's but xt8086's AD2 and AD3, and GP38/GP39 is xt8086's but FRANK Next's
+other link clock. Every board answers on its own pair first, so in practice none
+reaches another's.
 
 **Fingerprint.** Pins get pulled up, released, and classified by how they settle.
 Scoring is a *ratio* of pins matched, not a count, so a board with seven
@@ -316,14 +323,14 @@ address line.
 | Video detect | Which output the detector chose, and why |
 | Video output | Frames are being emitted, by counting them |
 | I2C bus scan | Every address from 0x08 to 0x77, and that both lines idle high |
-| Tape switch | Whether the DIP actually connects the tape line to GP22 |
+| Tape switch | Whether the DIP actually connects the tape line to the pin |
 | RTC | A DS3231 that is ticking, not merely acknowledging |
 | Clock accuracy | The system crystal against the RTC's, in ppm |
 | Unit serial | The DS2401 ROM, the only per-unit identity here that is not a guess |
 | GPIO short scan | Adjacent-pin solder bridges |
 | USB host | What has enumerated: vendor, product and kind |
 | USB hub | That a device reached the controller through it |
-| ESP-01 | A module answers AT, and names its firmware |
+| ESP 8266 | The companion answers AT, and names its firmware |
 
 The RTC row reads the seconds register twice a second apart, because a DS3231
 with a dead crystal or a flat cell acknowledges perfectly — the old row passed on
@@ -379,17 +386,38 @@ A failed restore is reported louder than the original fault, because the card
 then holds something nobody chose. The pattern counts rather than repeating, so a
 stuck bus cannot match it.
 
-### Inter-processor link (Core 2 / Core 2U)
+### Inter-processor link (Core 2 / Core 2U / FRANK Next)
 
 | Test | What it proves |
 |---|---|
 | Processor link | Handshake, then bidirectional throughput. Typically around 96 MiB/s duplex |
 | Link soak | Thirty seconds of sweeps, counting errors against passes |
-| Slave reset | The master can reboot the slave over FS and watch it come back |
+| Slave reset (FS) | The master can ask the slave to reboot over the wire, and watch it come back |
+| Slave reset (RUN) | The master can hold the slave's RUN pin low, and it stops answering while held |
 
-Both need the slave image running. The link stack escalates recovery on its own:
-an FS request every second failure, a reset pulse every fourth. A slave that boots
-late or gets reflashed has to be noticed rather than forced into step.
+All need the slave image running. The link stack escalates recovery on its own:
+an FS request every second failure, a RUN pulse every fourth where the board has
+the pin. A slave that boots late or gets reflashed has to be noticed rather than
+forced into step.
+
+The two reset rows are not the same test twice. **FS** proves the slave's
+*firmware* is listening — it samples that line from a timer interrupt and reboots
+itself — which is the only reset a Core 2 has and is no help at all against the
+failure worth recovering from: a slave in lockup with interrupts off, where no
+message on any wire arrives anywhere. **RUN** proves the *copper* arrives, and it
+is the only thing that reaches a slave in that state.
+
+FRANK Next is the first board to route it. The Core 2 schematic draws GPIO43 to
+the slave's RUN and the net is not in the copper, so that board gets the FS row
+and an n/a. The RUN test probes *while the pin is held low*, which is what makes
+it able to say so: a slave that keeps answering with its reset asserted is not a
+slow slave, it is a pin that goes nowhere, and the row says `net open` rather
+than failing vaguely.
+
+It is the slowest row in the run, deliberately. A RUN reset is a cold boot, so
+the slave does not know it was asked and sits out its full console-attach window
+on the way up — about seven seconds before it can answer anything, against well
+under one for an FS reboot.
 
 ---
 
@@ -561,7 +589,7 @@ power cycle and abandons the run. No state this writes can stop a board booting.
 
 ### Date and time, `Board` ▸ `Set Date and Time`
 
-Only on MegaFRANK and FRANK Next, and only when the DS3231 answered. Five fields,
+Only on MegaFRANK, FRANK Next and xt8086, and only when the DS3231 answered. Five fields,
 seconds written as zero.
 
 Opening on the time the part already holds means pressing `Enter` with nothing
@@ -571,7 +599,7 @@ already there. The flag is never cleared automatically: it is the only evidence
 that a coin cell has gone flat, and the RTC test reports it as such.
 
 There is no NTP. The two boards with an RTC and the boards with a network
-interface are disjoint sets except FRANK Next, whose ESP32 runs firmware this
+interface are disjoint sets except FRANK Next, whose ESP8266 runs firmware this
 repository does not own.
 
 ### NES gamepads, `Tests` ▸ `NES Gamepad(s)`

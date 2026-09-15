@@ -8,18 +8,22 @@
 #
 # release.sh — build the release UF2s and stamp the version.
 #
-# Four images come out of this:
+# Five images come out of this:
 #
 #   rp2350a  the test firmware for the 30-GPIO package
 #   rp2350b  the test firmware for the 48-GPIO package
-#   xt8086   the same program again, for the one board whose console and
+#   xt8086   the same program again, for a board whose console and
 #            microSD are not where the rest of the fleet's are
+#   next     the same program again, for the FRANK Next master, whose
+#            console moved because its microSD took GP0/GP1
 #   slave    the link peer. The inter-processor link cannot be tested from
 #            one end: "Processor link" and "Slave reset" report no answer
-#            unless the other chip is running this.
+#            unless the other chip is running this. One image serves the
+#            Core 2, Core 2U and FRANK Next slaves alike.
 #
-# The first three are the same program. Which one a board takes depends
-# only on the silicon in it, and the README has the table.
+# The first four are the same program. Which one a board takes depends
+# only on the silicon in it and on where its console is, and the README
+# has the table.
 #
 # Usage: ./release.sh [VERSION]
 #   VERSION   e.g. "1.00". Prompted with the next minor if omitted.
@@ -101,8 +105,8 @@ build_one() {
     fi
 }
 
-# Four images, and the split is by silicon rather than by board — with
-# one exception, which is what the fourth is.
+# Five images, and the split is by silicon rather than by board — with
+# two exceptions, which are the fourth and the fifth.
 #
 # The test firmware is one program: it works out which board it is on at
 # run time, so the only thing a build has to get right is the package.
@@ -111,23 +115,31 @@ build_one() {
 # — it hard-faults on the first access to a GPIO the package does not
 # have — so the names say the package, not a board.
 #
-# xt8086 is the exception, and not because it does anything differently
-# at run time: everything peculiar about that board is in its descriptor,
-# as it should be. What a board header decides, and detection cannot, is
-# where the console UART goes — and frank_b's answer is GP0/GP1, which on
-# xt8086 are the 8086's AD0 and AD1. An rp2350b image on that board would
-# put every printf on two lines of a live CPU's address bus, so it gets
-# an image whose console is on GP44/GP45 where its header is.
+# xt8086 and frank_next are the exceptions, and neither because it does
+# anything differently at run time: everything peculiar about those
+# boards is in their descriptors, as it should be. What a board header
+# decides, and detection cannot, is where the console UART goes — and
+# frank_b's answer is GP0/GP1, which on xt8086 are the 8086's AD0 and
+# AD1 and on frank_next are the microSD's CMD and CLK. An rp2350b image
+# would put every printf on a live CPU's address bus in the first case
+# and on a card's command line in the second, so each gets an image
+# whose console is where its own header says: GP44/GP45 for xt8086,
+# GP46/GP45 for frank_next.
 #
-# The slave image is a different program: the link peer that the Core 2
-# and Core 2U masters talk to. It is RP2350A, but it is listed separately
-# because you flash it for a different reason.
+# The slave image is a different program: the link peer that the Core 2,
+# the Core 2U and now the FRANK Next masters talk to. It is RP2350A, but
+# it is listed separately because you flash it for a different reason.
+# One image covers all three — the slave halves of those boards are
+# pin-identical, which is why the program can name its pins in a header
+# rather than detect them.
 build_one "rp2350a" app   app/build-rel-a   frank_a \
           frank-test           "frank-test_${VERSION_US}_rp2350a.uf2"
 build_one "rp2350b" app   app/build-rel-b   frank_b \
           frank-test           "frank-test_${VERSION_US}_rp2350b.uf2"
 build_one "xt8086"  app   app/build-rel-xt  frank_xt8086 \
           frank-test           "frank-test_${VERSION_US}_xt8086.uf2"
+build_one "next"    app   app/build-rel-next frank_next \
+          frank-test           "frank-test_${VERSION_US}_next.uf2"
 build_one "slave"   slave slave/build-release frank_core2u_slave \
           frank-core2u-slave   "frank-test_${VERSION_US}_slave.uf2"
 
